@@ -1,9 +1,16 @@
 import { defineNuxtModule, addPlugin, createResolver } from '@nuxt/kit'
+import { type StorageType } from './runtime/utils/storage'
+
 
 // Module options TypeScript interface definition
 export interface ModuleOptions {
     serverJobs?: boolean
     clientJobs?: boolean
+
+    storage: {
+        type: StorageType;
+        config?: Record<string, any>;
+    };
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -17,12 +24,17 @@ export default defineNuxtModule<ModuleOptions>({
     // Default configuration options of the Nuxt module
     defaults: {
         serverJobs: true,
-        clientJobs: false
+        clientJobs: false,
+
+        storage: {
+            type: 'memory'
+        },
     },
     setup(_options, _nuxt) {
         const resolver = createResolver(import.meta.url)
 
-        // Do not add the extension since the `.ts` will be transpiled to `.mjs` after `npm run prepack`
+        _nuxt.options.build.transpile.push(resolver.resolve('./runtime'));
+
         addPlugin(resolver.resolve('./runtime/plugin'))
     },
 })
