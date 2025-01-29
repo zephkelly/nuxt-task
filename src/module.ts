@@ -2,7 +2,7 @@ import { defineNuxtModule, addPlugin, createResolver } from '@nuxt/kit'
 import { type StorageType } from './runtime/utils/storage'
 
 
-// Module options TypeScript interface definition
+
 export interface ModuleOptions {
     serverJobs?: boolean
     clientJobs?: boolean
@@ -21,7 +21,6 @@ export default defineNuxtModule<ModuleOptions>({
             nuxt: '^3.10.0 || ^4.0.0',
         }
     },
-    // Default configuration options of the Nuxt module
     defaults: {
         serverJobs: true,
         clientJobs: false,

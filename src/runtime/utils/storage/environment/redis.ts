@@ -24,22 +24,26 @@ class RedisStorage extends BaseStorage implements CronStorage {
                 database: this.config.database
             });
             await this.client.connect();
-        } catch (error) {
+        }
+        catch (error) {
             throw new Error('Redis client unavailable. Make sure redis is installed: npm install redis');
         }
     }
 
     async add(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronJob> {
         const newJob = this.createJobObject(job);
+        
         await this.client.set(
             this.getKey(newJob.id),
             JSON.stringify(newJob)
         );
+
         return newJob;
     }
 
     async get(id: string): Promise<CronJob | null> {
         const data = await this.client.get(this.getKey(id));
+
         if (!data) return null;
         
         return JSON.parse(data);
@@ -47,6 +51,7 @@ class RedisStorage extends BaseStorage implements CronStorage {
 
     async getAll(): Promise<CronJob[]> {
         const keys = await this.client.keys(`${this.prefix}*`);
+
         if (!keys.length) return [];
 
         const jobs = await Promise.all(
@@ -60,6 +65,7 @@ class RedisStorage extends BaseStorage implements CronStorage {
 
     async update(id: string, updates: Partial<CronJob>): Promise<CronJob> {
         const job = await this.get(id);
+
         if (!job) {
             throw new Error(`Job with id ${id} not found`);
         }
@@ -77,6 +83,7 @@ class RedisStorage extends BaseStorage implements CronStorage {
 
     async clear(): Promise<void> {
         const keys = await this.client.keys(`${this.prefix}*`);
+
         if (keys.length) {
             await this.client.del(keys);
         }

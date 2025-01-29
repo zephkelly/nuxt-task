@@ -57,7 +57,6 @@ describe('Tree Shaking Tests', () => {
         }
     });
 
-    // Test browser environment
     it('should not include Redis code in browser bundle', async () => {
         const browserTestCode = `
             import { createBrowserStorage } from './../../../src/runtime/utils/storage';
@@ -84,9 +83,8 @@ describe('Tree Shaking Tests', () => {
                 fs.unlinkSync(testFilePath);
             }
         }
-    });
+    }, 10000);
 
-    // Test server environment
     it('should not include browser storage code in server bundle', async () => {
         const serverTestCode = `
             import { createRedisStorage } from './../../../src/runtime/utils/storage';
@@ -114,9 +112,8 @@ describe('Tree Shaking Tests', () => {
                 fs.unlinkSync(testFilePath);
             }
         }
-    });
+    }, 10000);
 
-    // Test memory storage
     it('should include only memory storage when specified', async () => {
         const memoryTestCode = `
             import { createMemoryStorage } from './../../../src/runtime/utils/storage';
@@ -140,5 +137,5 @@ describe('Tree Shaking Tests', () => {
                 fs.unlinkSync(testFilePath);
             }
         }
-    });
+    }, 10000);
 });

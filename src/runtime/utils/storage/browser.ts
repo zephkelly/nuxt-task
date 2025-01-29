@@ -8,7 +8,6 @@ export async function createStorage(options: StorageConfig): Promise<CronStorage
     }
    
     if (options.type === 'localStorage' || options.type === 'sessionStorage') {
-        // Import everything from browser
         const browserModule = await import('./environment/browser');
         return browserModule.createBrowserStorage(options);
     }

@@ -1,7 +1,6 @@
 import { randomUUID } from 'crypto';
-import type { CronJob } from '../../job/types';
+import type { CronJob, JobMetadata } from '../../job/types';
 import type { CronStorage } from '../types';
-import { isValidDate } from '../../date';
 
 
 
@@ -12,21 +11,14 @@ export class MemoryStorage implements CronStorage {
         // Nothing needed for memory storage
     }
 
-    async add(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronJob> {
-        const id = randomUUID();
+    async add(job: Omit<CronJob, 'id' | 'metadata'>): Promise<CronJob> {
+        const id = this.generateId();
         const now = new Date();
-        
-        // Validate dates and convert invalid ones to undefined
-        const lastRun = job.lastRun && isValidDate(job.lastRun) ? job.lastRun : undefined;
-        const nextRun = job.nextRun && isValidDate(job.nextRun) ? job.nextRun : undefined;
         
         const newJob: CronJob = {
             ...job,
             id,
-            lastRun,
-            nextRun,
-            createdAt: now,
-            updatedAt: now
+            metadata: this.createJobMetadata(job, now)
         };
         
         this.jobs.set(id, newJob);
@@ -47,30 +39,7 @@ export class MemoryStorage implements CronStorage {
             throw new Error(`Job with id ${id} not found`);
         }
 
-        // Create a new object without date fields first
-        const { lastRun, nextRun, ...otherUpdates } = updates;
-        
-        // Handle date updates separately with validation
-        let updatedLastRun = job.lastRun;
-        let updatedNextRun = job.nextRun;
-
-        // Only update dates if they're included in the updates
-        if ('lastRun' in updates) {
-            updatedLastRun = isValidDate(updates.lastRun) ? updates.lastRun : undefined;
-        }
-        if ('nextRun' in updates) {
-            updatedNextRun = isValidDate(updates.nextRun) ? updates.nextRun : undefined;
-        }
-
-        const updatedJob: CronJob = {
-            ...job,
-            ...otherUpdates,
-            lastRun: updatedLastRun,
-            nextRun: updatedNextRun,
-            id, // Prevent id from being updated
-            updatedAt: new Date()
-        };
-
+        const updatedJob = this.updateJobObject(job, updates);
         this.jobs.set(id, updatedJob);
         return updatedJob;
     }
@@ -82,7 +51,55 @@ export class MemoryStorage implements CronStorage {
     async clear(): Promise<void> {
         this.jobs.clear();
     }
+
+    protected generateId(): string {
+        return randomUUID();
+    }
+
+    protected createJobMetadata(job: Partial<CronJob>, now: Date): JobMetadata {
+        return {
+            lastRun: this.validateDate(job.metadata?.lastRun),
+            nextRun: this.validateDate(job.metadata?.nextRun),
+            lastError: job.metadata?.lastError,
+            runCount: job.metadata?.runCount ?? 0,
+            createdAt: now,
+            updatedAt: now
+        };
+    }
+
+    protected validateDate(date: unknown): Date | undefined {
+        if (date instanceof Date && !isNaN(date.getTime())) {
+            return date;
+        }
+        return undefined;
+    }
+
+    protected updateJobObject(
+        existingJob: CronJob,
+        updates: Partial<CronJob>
+    ): CronJob {
+        const now = new Date();
+        const metadata: JobMetadata = {
+            ...existingJob.metadata,
+            ...updates.metadata,
+            updatedAt: now,
+            lastRun: updates.metadata?.lastRun !== undefined 
+                ? this.validateDate(updates.metadata.lastRun)
+                : existingJob.metadata.lastRun,
+            nextRun: updates.metadata?.nextRun !== undefined
+                ? this.validateDate(updates.metadata.nextRun)
+                : existingJob.metadata.nextRun
+        };
+
+        return {
+            ...existingJob,
+            ...updates,
+            id: existingJob.id,
+            metadata
+        };
+    }
 }
+
 
 export function createMemoryStorage(): CronStorage {
     return new MemoryStorage();

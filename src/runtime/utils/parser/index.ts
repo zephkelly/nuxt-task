@@ -2,7 +2,8 @@ export { CronParseError } from './error'
 
 export {
     parseField,
-    parseCronExpression
+    parseCronExpression,
+    type ParsedCron
 } from './parse'
 
 export {

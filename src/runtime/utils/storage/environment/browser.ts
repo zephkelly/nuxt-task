@@ -8,9 +8,7 @@ import { MemoryStorage } from './memory';
 export abstract class BrowserStorageBase extends BaseStorage implements CronStorage {
     protected abstract storage: Storage;
 
-    async init(): Promise<void> {
-        // Nothing needed for browser storage
-    }
+    async init(): Promise<void> { }
 
     async add(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronJob> {
         const newJob = this.createJobObject(job);
@@ -94,11 +92,14 @@ export function createBrowserStorage(options: StorageConfig): CronStorage {
     if (options.type === 'memory') {
         return new MemoryStorage();
     }
+    
     if (options.type === 'localStorage') {
         return new LocalStorage(options.config);
     }
+
     if (options.type === 'sessionStorage') {
         return new SessionStorage(options.config);
     }
+
     throw new Error(`Storage type ${options.type} is not supported in browser environment`);
 }

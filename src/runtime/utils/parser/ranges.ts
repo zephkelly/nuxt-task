@@ -1,6 +1,3 @@
-/**
- * Valid ranges for each cron field
- */
 export const CRON_RANGES = {
     minute: { min: 0, max: 59 },
     hour: { min: 0, max: 23 },
@@ -12,9 +9,7 @@ export const CRON_RANGES = {
 export type CronField = keyof typeof CRON_RANGES;
 
 
-/**
- * Validates a single value against the allowed range for a cron field
- */
+
 export function validateValue(field: CronField, value: number): boolean {
     if (!Number.isInteger(value)) {
         return false;

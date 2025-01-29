@@ -7,7 +7,7 @@ import {
 import { CronParseError } from './error';
 
 
-// Type definitions to improve code clarity
+
 type ParseFieldResult = number[];
 type RangeDefinition = { min: number; max: number };
 
@@ -20,17 +20,11 @@ export interface ParsedCron {
 }
 
 
-/**
- * Creates a sequence of numbers from min to max (inclusive)
- */
 function createSequence(min: number, max: number): number[] {
     return Array.from({ length: max - min + 1 }, (_, i) => min + i);
 }
 
 
-/**
- * Validates and parses a numeric value for a cron field
- */
 function parseNumericValue(field: CronField, value: string, context: string): number {
     const num = Number(value);
     if (isNaN(num)) {
@@ -43,17 +37,12 @@ function parseNumericValue(field: CronField, value: string, context: string): nu
 };
 
 
-/**
- * Handles the asterisk pattern, generating all possible values for a field
- */
+
 function handleAsterisk(range: RangeDefinition): ParseFieldResult {
     return createSequence(range.min, range.max);
 };
 
 
-/**
- * Processes a comma-separated list of values
- */
 function handleList(field: CronField, value: string): ParseFieldResult {
     const parts = value.split(',');
     const result = new Set<number>();
@@ -71,9 +60,6 @@ function handleList(field: CronField, value: string): ParseFieldResult {
 
 
 
-/**
- * Creates a sequence of values based on a start value and step
- */
 function createStepSequence(start: number, max: number, step: number): number[] {
     const result = [];
     for (let i = start; i <= max; i += step) {
@@ -82,9 +68,7 @@ function createStepSequence(start: number, max: number, step: number): number[] 
     return result;
 }
 
-/**
- * Processes a step pattern (e.g., /2, 1 - 10 / 2)
- */
+
 function handleStep(field: CronField, value: string): ParseFieldResult {
     const [rangeStr, stepStr] = value.split('/').map(s => s.trim());
     if (!rangeStr || !stepStr) {
@@ -115,9 +99,7 @@ function handleStep(field: CronField, value: string): ParseFieldResult {
 }
 
 
-/**
- * Processes a range pattern (e.g., 1-5)
- */
+
 function handleRange(field: CronField, value: string): ParseFieldResult {
     if (!/^\d+\s*-\s*\d+$/.test(value)) {
         throw new CronParseError('Invalid range format', field, value);
@@ -135,9 +117,6 @@ function handleRange(field: CronField, value: string): ParseFieldResult {
 };
 
 
-/**
- * Parse a single cron field that could be a single value, range, or step
- */
 export function parseField(field: CronField, value: string): ParseFieldResult {
     const trimmedValue = value.trim();
     const range = CRON_RANGES[field];

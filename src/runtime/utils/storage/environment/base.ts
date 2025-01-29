@@ -1,8 +1,7 @@
 import { randomUUID } from 'crypto';
-import { isValidDate } from '../../date';
 
 import type { BaseStorageConfig } from '../types';
-import type { CronJob } from '../../job/types';
+import type { CronJob, JobMetadata } from '../../job/types';
 
 
 
@@ -21,27 +20,37 @@ export abstract class BaseStorage {
         return `${this.prefix}${id}`;
     }
 
-    protected validateDates(job: Partial<CronJob>): { lastRun?: Date; nextRun?: Date } {
+    protected validateDate(date: unknown): Date | undefined {
+        if (date instanceof Date && !isNaN(date.getTime())) {
+            return date;
+        }
+        return undefined;
+    }
+
+    protected createJobMetadata(
+        job: Partial<CronJob>,
+        now: Date
+    ): JobMetadata {
         return {
-            lastRun: job.lastRun && isValidDate(job.lastRun) ? job.lastRun : undefined,
-            nextRun: job.nextRun && isValidDate(job.nextRun) ? job.nextRun : undefined,
+            lastRun: this.validateDate(job.metadata?.lastRun),
+            nextRun: this.validateDate(job.metadata?.nextRun),
+            lastError: job.metadata?.lastError,
+            runCount: job.metadata?.runCount ?? 0,
+            createdAt: now,
+            updatedAt: now
         };
     }
 
     protected createJobObject(
-        job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>,
+        job: Omit<CronJob, 'id' | 'metadata'>,
         id?: string
     ): CronJob {
         const now = new Date();
-        const { lastRun, nextRun } = this.validateDates(job);
         
         return {
             ...job,
             id: id || this.generateId(),
-            lastRun,
-            nextRun,
-            createdAt: now,
-            updatedAt: now,
+            metadata: this.createJobMetadata(job, now)
         };
     }
 
@@ -49,15 +58,24 @@ export abstract class BaseStorage {
         existingJob: CronJob,
         updates: Partial<CronJob>
     ): CronJob {
-        const { lastRun, nextRun } = this.validateDates(updates);
-        
+        const now = new Date();
+        const metadata: JobMetadata = {
+            ...existingJob.metadata,
+            ...updates.metadata,
+            updatedAt: now,
+            lastRun: updates.metadata?.lastRun !== undefined 
+                ? this.validateDate(updates.metadata.lastRun)
+                : existingJob.metadata.lastRun,
+            nextRun: updates.metadata?.nextRun !== undefined
+                ? this.validateDate(updates.metadata.nextRun)
+                : existingJob.metadata.nextRun
+        };
+
         return {
             ...existingJob,
             ...updates,
-            lastRun: 'lastRun' in updates ? lastRun : existingJob.lastRun,
-            nextRun: 'nextRun' in updates ? nextRun : existingJob.nextRun,
             id: existingJob.id,
-            updatedAt: new Date(),
+            metadata
         };
     }
 }
