@@ -37,12 +37,24 @@
     "@nuxt/module-builder": "^0.8.4",
     "@nuxt/schema": "^3.15.3",
     "@nuxt/test-utils": "^3.15.4",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "latest",
     "changelogen": "^0.5.7",
     "eslint": "^9.19.0",
     "nuxt": "^3.15.3",
+    "rollup": "^4.32.1",
+    "tslib": "^2.8.1",
     "typescript": "~5.7.3",
     "vitest": "^3.0.4",
     "vue-tsc": "^2.2.0"
+  },
+  "peerDependencies": {
+    "redis": "^4.7.0"
+  },
+  "peerDependenciesMeta": {
+    "redis": {
+      "optional": true
+    }
   }
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
-import type { CronJob } from './../../job/types';
-import type { CronStorage } from './../types';
-import { isValidDate } from './../../date';
+import type { CronJob } from '../../job/types';
+import type { CronStorage } from '../types';
+import { isValidDate } from '../../date';
 
 
 
@@ -82,4 +82,8 @@ export class MemoryStorage implements CronStorage {
     async clear(): Promise<void> {
         this.jobs.clear();
     }
+}
+
+export function createMemoryStorage(): CronStorage {
+    return new MemoryStorage();
 }

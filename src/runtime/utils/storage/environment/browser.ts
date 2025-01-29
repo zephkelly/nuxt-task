@@ -1,10 +1,11 @@
 import type { CronJob } from '../../job/types';
-import type { CronStorage, BaseStorageConfig } from '../types';
+import type { CronStorage, StorageConfig, BaseStorageConfig } from '../types';
 import { BaseStorage } from './base';
+import { MemoryStorage } from './memory';
 
 
 
-abstract class BrowserStorageBase extends BaseStorage implements CronStorage {
+export abstract class BrowserStorageBase extends BaseStorage implements CronStorage {
     protected abstract storage: Storage;
 
     async init(): Promise<void> {
@@ -73,20 +74,31 @@ abstract class BrowserStorageBase extends BaseStorage implements CronStorage {
     }
 }
 
-export class LocalStorage extends BrowserStorageBase {
-    protected storage: Storage;
 
+
+export class LocalStorage extends BrowserStorageBase {
+    protected storage: Storage = localStorage;
     constructor(config?: BaseStorageConfig) {
         super(config);
-        this.storage = localStorage;
     }
 }
 
 export class SessionStorage extends BrowserStorageBase {
-    protected storage: Storage;
-
+    protected storage: Storage = sessionStorage;
     constructor(config?: BaseStorageConfig) {
         super(config);
-        this.storage = sessionStorage;
     }
+}
+
+export function createBrowserStorage(options: StorageConfig): CronStorage {
+    if (options.type === 'memory') {
+        return new MemoryStorage();
+    }
+    if (options.type === 'localStorage') {
+        return new LocalStorage(options.config);
+    }
+    if (options.type === 'sessionStorage') {
+        return new SessionStorage(options.config);
+    }
+    throw new Error(`Storage type ${options.type} is not supported in browser environment`);
 }

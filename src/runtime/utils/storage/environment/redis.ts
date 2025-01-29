@@ -1,24 +1,32 @@
-import { createClient } from 'redis';
-import type { CronJob } from './../../job/types';
+import type { CronJob } from '../../job/types';
 import type { CronStorage, RedisConfig } from '../types';
 import { BaseStorage } from './base';
 
+import type { RedisClientType, RedisModules, RedisFunctions, RedisScripts } from 'redis';
 
 
-export class RedisStorage extends BaseStorage implements CronStorage {
-    private client: ReturnType<typeof createClient>;
-    
+
+type RedisClient = RedisClientType<RedisModules, RedisFunctions, RedisScripts>;
+
+class RedisStorage extends BaseStorage implements CronStorage {
+    private client!: RedisClient;
+
     constructor(private config: RedisConfig) {
         super(config);
-        this.client = createClient({
-            url: config.url,
-            password: config.password,
-            database: config.database
-        });
     }
 
     async init(): Promise<void> {
-        await this.client.connect();
+        try {
+            const { createClient } = await import('redis');
+            this.client = createClient({
+                url: this.config.url,
+                password: this.config.password,
+                database: this.config.database
+            });
+            await this.client.connect();
+        } catch (error) {
+            throw new Error('Redis client unavailable. Make sure redis is installed: npm install redis');
+        }
     }
 
     async add(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronJob> {
@@ -73,4 +81,11 @@ export class RedisStorage extends BaseStorage implements CronStorage {
             await this.client.del(keys);
         }
     }
+}
+
+
+export async function createRedisStorage(config: RedisConfig): Promise<CronStorage> {
+    const storage = new RedisStorage(config);
+    await storage.init();
+    return storage;
 }

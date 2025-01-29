@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { MemoryStorage } from './../../../src/runtime/utils/storage/memory'
-
 
 
 describe('MemoryStorage', () => {
-    let storage: MemoryStorage
+    let MemoryStorage: any
+    let storage: any
 
-    beforeEach(() => {
+    beforeEach(async () => {
+        // Dynamically import the MemoryStorage class
+        const module = await import('../../../src/runtime/utils/storage/environment/memory')
+        MemoryStorage = module.MemoryStorage
         storage = new MemoryStorage()
     })
 
