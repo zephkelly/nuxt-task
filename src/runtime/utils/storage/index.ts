@@ -1,24 +1,45 @@
-import { type CronStorage } from './types';
-import { MemoryStorage } from './memory';
+import type { StorageConfig, CronStorage } from './types';
+import { MemoryStorage } from './environments/memory';
+import { RedisStorage } from './environments/redis';
+import { LocalStorage, SessionStorage } from './environments/browser';
 
-import { type StorageType } from './types';
-export { type StorageType } from './types';
+export * from './types';
 
+const isBrowser = typeof window !== 'undefined';
 
-export interface StorageOptions {
-    type: StorageType;
-    config?: Record<string, any>;
-}
+export async function createStorage(options: StorageConfig): Promise<CronStorage> {
+    let storage: CronStorage;
 
-export function createStorage(options: StorageOptions): CronStorage {
     switch (options.type) {
         case 'memory':
-            return new MemoryStorage();
+            storage = new MemoryStorage();
+            break;
+            
         case 'redis':
-            throw new Error('Redis storage not implemented');
-        case 'database':
-            throw new Error('Database storage not implemented');
+            if (isBrowser) {
+                throw new Error('Redis storage is not available in browser environment');
+            }
+            storage = new RedisStorage(options.config);
+            break;
+            
+        case 'localStorage':
+            if (!isBrowser) {
+                throw new Error('Local storage is only available in browser environment');
+            }
+            storage = new LocalStorage(options.config);
+            break;
+            
+        case 'sessionStorage':
+            if (!isBrowser) {
+                throw new Error('Session storage is only available in browser environment');
+            }
+            storage = new SessionStorage(options.config);
+            break;
+            
         default:
             throw new Error(`Unknown storage type: ${options.type}`);
     }
+
+    await storage.init();
+    return storage;
 }
