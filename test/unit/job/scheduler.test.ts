@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { Scheduler } from './../../src/runtime/utils/scheduler';
-import { MemoryStorage } from './../../src/runtime/utils/storage/environment/memory';
-import type { CronJob, JobEvent } from './../../src/runtime/utils/job/types';
+import { Scheduler } from '../../../src/runtime/utils/job/scheduler';
+import { MemoryStorage } from '../../../src/runtime/utils/storage/environment/memory';
+import type { CronJob, JobEvent } from '../../../src/runtime/utils/job/types';
 
 
 
@@ -10,11 +10,9 @@ describe('Scheduler', () => {
     let storage: MemoryStorage;
 
     beforeEach(async () => {
-        // Create new storage instance
         storage = new MemoryStorage();
         await storage.init();
 
-        // Spy on the prototype methods
         vi.spyOn(MemoryStorage.prototype, 'add');
         vi.spyOn(MemoryStorage.prototype, 'update');
         vi.spyOn(MemoryStorage.prototype, 'get');
@@ -120,7 +118,7 @@ describe('Scheduler', () => {
                     expression: 'invalid cron'
                 },
                 execute: async () => 'test'
-            }).catch(() => {/* ignore error */});
+            }).catch(() => { });
 
             expect(errorHandler).toHaveBeenCalled();
         });

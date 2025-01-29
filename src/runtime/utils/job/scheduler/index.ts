@@ -1,9 +1,9 @@
 import { EventEmitter } from 'events';
-import type { CronJob, JobEvent, JobId } from '../job/types';
-import type { CronStorage, StorageConfig } from '../storage/types';
-import type { SchedulerEvents, SchedulerOptions, SchedulerStats } from './types';
-import { JobQueue } from '../queue';
-import { parseCronExpression, type ParsedCron } from './../parser';
+import type { CronJob, JobEvent, JobId } from '../types';
+import type { CronStorage } from '../../storage/types';
+import type { SchedulerOptions, SchedulerStats } from './types';
+import { JobQueue } from './queue';
+import { parseCronExpression, type ParsedCron } from '../../expression';
 
 
 
@@ -142,7 +142,6 @@ export class Scheduler extends EventEmitter {
 
     async addJob(job: Omit<CronJob, 'id' | 'metadata'>): Promise<CronJob> {
         try {
-            // Validate cron expression
             parseCronExpression(job.options.expression);
         
             // Create job with metadata
@@ -368,7 +367,7 @@ export class Scheduler extends EventEmitter {
             const jobs = this.queue.getAll();
             await Promise.all(jobs.map(async job => {
                 const existingJob = await this.storage.get(job.id);
-                
+
                 if (existingJob) {
                     await this.storage.update(job.id, job);
                 }

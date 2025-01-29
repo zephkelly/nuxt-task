@@ -1,11 +1,12 @@
-// tests/unit/cron-parser.test.ts
 import { describe, it, expect } from 'vitest'
 import {
     parseField,
     parseCronExpression,
     CronParseError,
     validateValue
-} from '../../src/runtime/utils/parser'
+} from '../../../src/runtime/utils/expression'
+
+
 
 describe('cron parser', () => {
     describe('validateValue', () => {
@@ -30,41 +31,41 @@ describe('cron parser', () => {
         })
 
         it('handles special number formats correctly', () => {
-            expect(validateValue('minute', Number('00'))).toBe(true)  // Leading zeros
-            expect(validateValue('hour', +'12')).toBe(true)          // Unary plus
-            expect(validateValue('month', Number(''))).toBe(false)    // Empty string conversion
+            expect(validateValue('minute', Number('00'))).toBe(true)    // Leading zeros
+            expect(validateValue('hour', +'12')).toBe(true)             // Unary plus
+            expect(validateValue('month', Number(''))).toBe(false)      // Empty string conversion
         })
 
         it('validates edge cases for all fields', () => {
             // Minutes
-            expect(validateValue('minute', 0)).toBe(true)    // Lower bound
-            expect(validateValue('minute', 59)).toBe(true)   // Upper bound
-            expect(validateValue('minute', -0)).toBe(true)   // Negative zero
-            expect(validateValue('minute', 59.0)).toBe(true) // Decimal point zero
+            expect(validateValue('minute', 0)).toBe(true)               // Lower bound
+            expect(validateValue('minute', 59)).toBe(true)              // Upper bound
+            expect(validateValue('minute', -0)).toBe(true)              // Negative zero
+            expect(validateValue('minute', 59.0)).toBe(true)            // Decimal point zero
 
             // Hours
-            expect(validateValue('hour', 0)).toBe(true)      // Lower bound
-            expect(validateValue('hour', 23)).toBe(true)     // Upper bound
-            expect(validateValue('hour', -0)).toBe(true)     // Negative zero
-            expect(validateValue('hour', 23.0)).toBe(true)   // Decimal point zero
+            expect(validateValue('hour', 0)).toBe(true)                 // Lower bound
+            expect(validateValue('hour', 23)).toBe(true)                // Upper bound
+            expect(validateValue('hour', -0)).toBe(true)                // Negative zero
+            expect(validateValue('hour', 23.0)).toBe(true)              // Decimal point zero
 
             // Day of Month
-            expect(validateValue('dayOfMonth', 1)).toBe(true)  // Lower bound
-            expect(validateValue('dayOfMonth', 31)).toBe(true) // Upper bound
-            expect(validateValue('dayOfMonth', 0)).toBe(false) // Invalid lower
-            expect(validateValue('dayOfMonth', 32)).toBe(false)// Invalid upper
+            expect(validateValue('dayOfMonth', 1)).toBe(true)           // Lower bound
+            expect(validateValue('dayOfMonth', 31)).toBe(true)          // Upper bound
+            expect(validateValue('dayOfMonth', 0)).toBe(false)          // Invalid lower
+            expect(validateValue('dayOfMonth', 32)).toBe(false)         // Invalid upper
 
             // Month
-            expect(validateValue('month', 1)).toBe(true)     // Lower bound
-            expect(validateValue('month', 12)).toBe(true)    // Upper bound
-            expect(validateValue('month', 0)).toBe(false)    // Invalid lower
-            expect(validateValue('month', 13)).toBe(false)   // Invalid upper
+            expect(validateValue('month', 1)).toBe(true)                // Lower bound
+            expect(validateValue('month', 12)).toBe(true)               // Upper bound
+            expect(validateValue('month', 0)).toBe(false)               // Invalid lower
+            expect(validateValue('month', 13)).toBe(false)              // Invalid upper
 
             // Day of Week
-            expect(validateValue('dayOfWeek', 0)).toBe(true) // Sunday
-            expect(validateValue('dayOfWeek', 6)).toBe(true) // Saturday
-            expect(validateValue('dayOfWeek', 7)).toBe(false)// Invalid day
-            expect(validateValue('dayOfWeek', -1)).toBe(false)// Invalid negative
+            expect(validateValue('dayOfWeek', 0)).toBe(true)            // Sunday
+            expect(validateValue('dayOfWeek', 6)).toBe(true)            // Saturday
+            expect(validateValue('dayOfWeek', 7)).toBe(false)           // Invalid day
+            expect(validateValue('dayOfWeek', -1)).toBe(false)          // Invalid negative
         })
     })
 
@@ -154,7 +155,6 @@ describe('cron parser', () => {
                 expect(parseField('minute', '5/15')).toEqual([5, 20, 35, 50])
             })
 
-            // Test edge cases with steps that exceed range
             it('throws error for steps that exceed the field range', () => {
                 expect(() => parseField('hour', '*/25')).toThrow(CronParseError)
                 expect(() => parseField('minute', '*/70')).toThrow(CronParseError)
@@ -162,7 +162,6 @@ describe('cron parser', () => {
                 expect(() => parseField('dayOfWeek', '*/8')).toThrow(CronParseError)
             })
 
-            // Test step pattern whitespace handling
             it('handles various whitespace in step patterns', () => {
                 expect(parseField('minute', '*/15')).toEqual(parseField('minute', '* / 15'))
                 expect(parseField('minute', '0-10/2')).toEqual(parseField('minute', '0 - 10 / 2'))
@@ -271,7 +270,6 @@ describe('cron parser', () => {
             }
         })
 
-        // Test malformed expressions
         it('detects malformed expressions', () => {
             expect(() => parseCronExpression('** * * * *')).toThrow(CronParseError)
             expect(() => parseCronExpression('*/*/* * * * *')).toThrow(CronParseError)
@@ -280,13 +278,11 @@ describe('cron parser', () => {
     })
 
     describe('month and day handling', () => {
-        // Test month-specific cases
         it('handles month-specific patterns correctly', () => {
             expect(parseField('month', '*/2')).toEqual([2, 4, 6, 8, 10, 12])
             expect(parseField('month', '2-12/3')).toEqual([2, 5, 8, 11])
         })
 
-        // Test day of week special cases
         it('handles day of week patterns correctly', () => {
             expect(parseField('dayOfWeek', '*/2')).toEqual([0, 2, 4, 6])
             expect(parseField('dayOfWeek', '1-5')).toEqual([1, 2, 3, 4, 5])  // Monday to Friday

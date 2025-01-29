@@ -11,6 +11,9 @@ export interface ModuleOptions {
         type: StorageType;
         config?: Record<string, any>;
     };
+
+    timezone?: string;
+    validateTimezone?: boolean;
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -28,12 +31,16 @@ export default defineNuxtModule<ModuleOptions>({
         storage: {
             type: 'memory'
         },
+
+        timezone: 'UTC',
+        validateTimezone: true,
     },
     setup(_options, _nuxt) {
         const resolver = createResolver(import.meta.url)
-
         _nuxt.options.build.transpile.push(resolver.resolve('./runtime'));
 
-        addPlugin(resolver.resolve('./runtime/plugin'))
+        addPlugin({
+            src: resolver.resolve('./runtime/plugin'),
+        })
     },
 })

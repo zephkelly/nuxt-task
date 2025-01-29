@@ -1,4 +1,6 @@
-import type { JobEvent } from './../job/types';
+import type { JobEvent } from '../types';
+
+
 
 export type SchedulerEvents = {
         [K in JobEvent['type']as `job-${K}`]: (event: Extract<JobEvent, { type: K }>) => void;

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import type { CronJob, JobId } from '../job/types'
+import type { CronJob, JobId } from '../types'
 
 
 

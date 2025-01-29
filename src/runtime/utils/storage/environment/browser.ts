@@ -88,17 +88,21 @@ export class SessionStorage extends BrowserStorageBase {
     }
 }
 
-export function createBrowserStorage(options: StorageConfig): CronStorage {
+export async function createBrowserStorage(options: StorageConfig): Promise<CronStorage> {
     if (options.type === 'memory') {
         return new MemoryStorage();
     }
     
     if (options.type === 'localStorage') {
-        return new LocalStorage(options.config);
+        const storage = new LocalStorage(options.config);
+        await storage.init();
+        return storage;
     }
 
     if (options.type === 'sessionStorage') {
-        return new SessionStorage(options.config);
+        const storage = new SessionStorage(options.config);
+        await storage.init();
+        return storage;
     }
 
     throw new Error(`Storage type ${options.type} is not supported in browser environment`);

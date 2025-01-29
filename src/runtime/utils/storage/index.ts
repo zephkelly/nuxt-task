@@ -20,3 +20,5 @@ export { createRedisStorage } from './environment/redis';
 
 export { BaseStorage } from './environment/base';
 export { MemoryStorage, createMemoryStorage } from './environment/memory';
+
+export { createStorage as createServerStorage } from './server';
