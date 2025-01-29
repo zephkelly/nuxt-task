@@ -1,17 +1,34 @@
-export interface CronJob {
-    id: string;
-    name: string;
-    expression: string;
-    callback: string; // Serialized function or path to function
-    enabled: boolean;
-    lastRun?: Date;
-    nextRun?: Date;
-    createdAt: Date;
-    updatedAt: Date;
-}
-  
+import type { CronJob }  from '../job/types';
 
-export type StorageType = 'memory' | 'redis' | 'database';
+
+
+export type BackendStorageType = 'memory' | 'redis' | 'database';
+export type FrontendStorageType = 'memory' | 'sessionStorage' | 'localStorage';
+
+export type StorageType = BackendStorageType | FrontendStorageType;
+
+
+export interface BaseStorageConfig {
+    prefix?: string;
+}
+
+export interface RedisConfig extends BaseStorageConfig {
+    url: string;
+    password?: string;
+    database?: number;
+}
+
+export interface DatabaseConfig extends BaseStorageConfig {
+    url: string;
+    type: 'mysql' | 'postgres' | 'sqlite';
+}
+
+export type StorageConfig = 
+    | { type: 'memory' } 
+    | { type: 'redis'; config: RedisConfig }
+    | { type: 'database'; config: DatabaseConfig }
+    | { type: 'sessionStorage' | 'localStorage'; config?: BaseStorageConfig };
+
 
 export interface CronStorage {
     init(): Promise<void>;
