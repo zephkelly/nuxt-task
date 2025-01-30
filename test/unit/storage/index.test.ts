@@ -18,7 +18,7 @@ describe('MemoryStorage', () => {
                 name: 'Test Job',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
-                enabled: true
+                enabled: true,
             }
 
             const job = await storage.add(jobData)
@@ -27,10 +27,10 @@ describe('MemoryStorage', () => {
                 ...jobData,
                 id: expect.any(String),
                 metadata: {
-                    runCount: 0,
-                    createdAt: expect.any(Date),
-                    updatedAt: expect.any(Date)
-                }
+                runCount: 0,
+                createdAt: expect.any(Date),
+                updatedAt: expect.any(Date),
+                },
             })
         })
     })
@@ -41,7 +41,7 @@ describe('MemoryStorage', () => {
                 name: 'Test Job',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
-                enabled: true
+                enabled: true,
             }
 
             const job = await storage.add(jobData)
@@ -51,7 +51,7 @@ describe('MemoryStorage', () => {
 
             const updates = {
                 name: 'Updated Job',
-                enabled: false
+                enabled: false,
             }
 
             const updatedJob = await storage.update(job.id, updates)
@@ -59,15 +59,14 @@ describe('MemoryStorage', () => {
             expect({
                 ...updatedJob,
                 metadata: {
-                    ...updatedJob.metadata,
-                    updatedAt: job.metadata.updatedAt
-                }
+                ...updatedJob.metadata,
+                updatedAt: job.metadata.updatedAt,
+                },
             }).toMatchObject({
                 ...job,
-                ...updates
+                ...updates,
             })
 
-            // Separately verify the updatedAt timestamp is newer
             expect(updatedJob.metadata.updatedAt.getTime()).toBeGreaterThan(job.metadata.updatedAt.getTime())
             expect(updatedJob.metadata.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime())
         })
@@ -79,7 +78,7 @@ describe('MemoryStorage', () => {
                 name: 'Test Job',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
-                enabled: true
+                enabled: true,
             }
 
             const addedJob = await storage.add(jobData)
@@ -105,14 +104,14 @@ describe('MemoryStorage', () => {
                 name: 'Test Job 1',
                 expression: '* * * * *',
                 callback: 'console.log("test1")',
-                enabled: true
+                enabled: true,
             }
 
             const jobData2 = {
                 name: 'Test Job 2',
                 expression: '*/5 * * * *',
                 callback: 'console.log("test2")',
-                enabled: false
+                enabled: false,
             }
 
             const job1 = await storage.add(jobData1)
@@ -130,20 +129,20 @@ describe('MemoryStorage', () => {
                 name: 'Test Job',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
-                enabled: true
-            });
-    
+                enabled: true,
+            })
+
             // Simulate concurrent updates
             const updates = await Promise.all([
                 storage.update(job.id, { name: 'Update 1' }),
                 storage.update(job.id, { name: 'Update 2' }),
-                storage.update(job.id, { name: 'Update 3' })
-            ]);
-    
-            const finalJob = await storage.get(job.id);
-            expect(updates.some(u => u.name === finalJob?.name)).toBe(true);
-        });
-    });
+                storage.update(job.id, { name: 'Update 3' }),
+            ])
+
+            const finalJob = await storage.get(job.id)
+            expect(updates.some(u => u.name === finalJob?.name)).toBe(true)
+        })
+    })
 
     describe('edge cases', () => {
         it('should handle empty strings in job properties', async () => {
@@ -151,38 +150,38 @@ describe('MemoryStorage', () => {
                 name: '',
                 expression: '* * * * *',
                 callback: '',
-                enabled: true
-            });
-            
-            expect(job.name).toBe('');
-            expect(job.callback).toBe('');
-        });
-    
+                enabled: true,
+            })
+
+            expect(job.name).toBe('')
+            expect(job.callback).toBe('')
+        })
+
         it('should handle extremely long job names and callbacks', async () => {
-            const longString = 'a'.repeat(10000);
+            const longString = 'a'.repeat(10000)
             const job = await storage.add({
                 name: longString,
                 expression: '* * * * *',
                 callback: longString,
-                enabled: true
-            });
-            
-            expect(job.name).toBe(longString);
-            expect(job.callback).toBe(longString);
-        });
-    
+                enabled: true,
+            })
+
+            expect(job.name).toBe(longString)
+            expect(job.callback).toBe(longString)
+        })
+
         it('should handle special characters in job properties', async () => {
             const job = await storage.add({
                 name: '!@#$%^&*()',
                 expression: '* * * * *',
                 callback: 'console.log("⚡️🎉")',
-                enabled: true
-            });
-            
-            const retrieved = await storage.get(job.id);
-            expect(retrieved).toEqual(job);
-        });
-    });
+                enabled: true,
+            })
+
+            const retrieved = await storage.get(job.id)
+            expect(retrieved).toEqual(job)
+        })
+    })
 
     describe('date handling', () => {
         it('should handle invalid dates in lastRun and nextRun', async () => {
@@ -192,11 +191,11 @@ describe('MemoryStorage', () => {
                 callback: 'console.log("test")',
                 enabled: true,
                 metadata: {
-                    lastRun: new Date('invalid date'),
-                    nextRun: new Date('invalid date')
-                }
+                lastRun: new Date('invalid date'),
+                nextRun: new Date('invalid date'),
+                },
             })
-            
+
             expect(job.metadata.lastRun).toBeUndefined()
             expect(job.metadata.nextRun).toBeUndefined()
         })
@@ -208,11 +207,11 @@ describe('MemoryStorage', () => {
                 callback: 'console.log("test")',
                 enabled: true,
                 metadata: {
-                    lastRun: undefined,
-                    nextRun: undefined
-                }
+                lastRun: undefined,
+                nextRun: undefined,
+                },
             })
-            
+
             expect(job.metadata.lastRun).toBeUndefined()
             expect(job.metadata.nextRun).toBeUndefined()
         })
@@ -225,16 +224,16 @@ describe('MemoryStorage', () => {
                 callback: 'console.log("test")',
                 enabled: true,
                 metadata: {
-                    lastRun: validDate,
-                    nextRun: validDate
-                }
+                lastRun: validDate,
+                nextRun: validDate,
+                },
             })
 
             const updatedJob = await storage.update(job.id, {
                 metadata: {
-                    lastRun: new Date('invalid date'),
-                    nextRun: new Date('invalid date')
-                }
+                lastRun: new Date('invalid date'),
+                nextRun: new Date('invalid date'),
+                },
             })
 
             expect(updatedJob.metadata.lastRun).toBeUndefined()
@@ -249,15 +248,15 @@ describe('MemoryStorage', () => {
                 callback: 'console.log("test")',
                 enabled: true,
                 metadata: {
-                    lastRun: validDate,
-                    nextRun: validDate
-                }
+                lastRun: validDate,
+                nextRun: validDate,
+                },
             })
 
             const updatedJob = await storage.update(job.id, {
                 metadata: {
-                    lastRun: new Date('invalid date')
-                }
+                lastRun: new Date('invalid date'),
+                },
             })
 
             expect(updatedJob.metadata.lastRun).toBeUndefined()
@@ -271,33 +270,33 @@ describe('MemoryStorage', () => {
                 name: `Job ${i}`,
                 expression: '* * * * *',
                 callback: `console.log(${i})`,
-                enabled: true
-            }));
-            
-            const added = await Promise.all(jobs.map(job => storage.add(job)));
-            expect(added).toHaveLength(jobs.length);
-            
-            const all = await storage.getAll();
-            expect(all).toHaveLength(jobs.length);
-        });
-    
+                enabled: true,
+            }))
+
+            const added = await Promise.all(jobs.map(job => storage.add(job)))
+            expect(added).toHaveLength(jobs.length)
+
+            const all = await storage.getAll()
+            expect(all).toHaveLength(jobs.length)
+        })
+
         it('should handle removing many jobs simultaneously', async () => {
             const jobs = await Promise.all(
                 Array.from({ length: 100 }, (_, i) => storage.add({
-                    name: `Job ${i}`,
-                    expression: '* * * * *',
-                    callback: `console.log(${i})`,
-                    enabled: true
-                }))
-            );
-            
+                name: `Job ${i}`,
+                expression: '* * * * *',
+                callback: `console.log(${i})`,
+                enabled: true,
+                })),
+            )
+
             // Remove them all simultaneously
-            await Promise.all(jobs.map(job => storage.remove(job.id)));
-            
-            const remaining = await storage.getAll();
-            expect(remaining).toHaveLength(0);
-        });
-    });
+            await Promise.all(jobs.map(job => storage.remove(job.id)))
+
+            const remaining = await storage.getAll()
+            expect(remaining).toHaveLength(0)
+        })
+    })
 
     describe('remove', () => {
         it('should remove an existing job', async () => {
@@ -305,7 +304,7 @@ describe('MemoryStorage', () => {
                 name: 'Test Job',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
-                enabled: true
+                enabled: true,
             })
 
             const result = await storage.remove(job.id)
@@ -327,14 +326,14 @@ describe('MemoryStorage', () => {
                 name: 'Test Job 1',
                 expression: '* * * * *',
                 callback: 'console.log("test1")',
-                enabled: true
+                enabled: true,
             })
 
             await storage.add({
                 name: 'Test Job 2',
                 expression: '*/5 * * * *',
                 callback: 'console.log("test2")',
-                enabled: false
+                enabled: false,
             })
 
             await storage.clear()

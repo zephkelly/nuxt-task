@@ -6,19 +6,19 @@ export type {
     BaseStorageConfig,
     RedisConfig,
     DatabaseConfig,
-    CronStorage
-} from './types';
+    CronStorage,
+} from './types'
 
 export {
     BrowserStorageBase,
     LocalStorage,
     SessionStorage,
-    createBrowserStorage
-} from './environment/browser';
+    createBrowserStorage,
+} from './environment/browser'
 
-export { createRedisStorage } from './environment/redis';
+export { createRedisStorage } from './environment/redis'
 
-export { BaseStorage } from './environment/base';
-export { MemoryStorage, createMemoryStorage } from './environment/memory';
+export { BaseStorage } from './environment/base'
+export { MemoryStorage, createMemoryStorage } from './environment/memory'
 
-export { createStorage as createServerStorage } from './server';
+export { createStorage as createServerStorage } from './server'

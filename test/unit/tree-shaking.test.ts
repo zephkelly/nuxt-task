@@ -1,8 +1,10 @@
-import { describe, it, expect, afterAll } from 'vitest';
-import { rollup } from 'rollup';
-import { nodeResolve } from '@rollup/plugin-node-resolve';
-import typescript from '@rollup/plugin-typescript';
-import * as path from 'path';
+import { describe, it, expect, afterAll } from 'vitest'
+import fs from 'fs'
+import path from 'path'
+
+import { rollup } from 'rollup'
+import { nodeResolve } from '@rollup/plugin-node-resolve'
+import typescript from '@rollup/plugin-typescript'
 
 
 
@@ -12,50 +14,49 @@ async function analyzeBundleContent(entryPoint: string) {
         plugins: [
             nodeResolve({
                 extensions: ['.ts'],
-                preferBuiltins: true
+                preferBuiltins: true,
             }),
             typescript({
                 tsconfig: './tsconfig.json',
                 compilerOptions: {
-                    declaration: false,
-                    sourceMap: false,
-                    moduleResolution: 'node',
-                    outDir: './test/temp'
-                }
-            })
+                declaration: false,
+                sourceMap: false,
+                moduleResolution: 'node',
+                outDir: './test/temp',
+                },
+            }),
         ],
         treeshake: {
             moduleSideEffects: false,
-            propertyReadSideEffects: false
+            propertyReadSideEffects: false,
         },
         onwarn(warning, warn) {
-            if (warning.code === 'THIS_IS_UNDEFINED') return;
-            warn(warning);
-        }
-    });
+            if (warning.code === 'THIS_IS_UNDEFINED') return
+            warn(warning)
+        },
+    })
 
     const { output } = await bundle.generate({
         format: 'es',
-        sourcemap: false
-    });
+        sourcemap: false,
+    })
 
-    await bundle.close();
-    return output[0].code;
+    await bundle.close()
+    return output[0].code
 }
 
-// Create temp directory for test files
-const fs = require('fs');
-const testTempDir = path.resolve(__dirname, 'temp');
+
+const testTempDir = path.resolve(__dirname, 'temp')
 if (!fs.existsSync(testTempDir)) {
-    fs.mkdirSync(testTempDir, { recursive: true });
+    fs.mkdirSync(testTempDir, { recursive: true })
 }
 
 describe('Tree Shaking Tests', () => {
     afterAll(() => {
         if (fs.existsSync(testTempDir)) {
-            fs.rmSync(testTempDir, { recursive: true });
+        fs.rmSync(testTempDir, { recursive: true })
         }
-    });
+    })
 
     it('should not include Redis code in browser bundle', async () => {
         const browserTestCode = `
@@ -67,23 +68,24 @@ describe('Tree Shaking Tests', () => {
                     config: { prefix: 'test:' }
                 });
             }
-        `;
+        `
 
-        const testFilePath = path.resolve(testTempDir, 'browser-test.ts');
-        fs.writeFileSync(testFilePath, browserTestCode);
+        const testFilePath = path.resolve(testTempDir, 'browser-test.ts')
+        fs.writeFileSync(testFilePath, browserTestCode)
 
         try {
-            const bundleContent = await analyzeBundleContent(testFilePath);
-            expect(bundleContent).not.toContain('redis');
-            expect(bundleContent).not.toContain('createRedisStorage');
-            expect(bundleContent).toContain('localStorage');
-            expect(bundleContent).toContain('BrowserStorageBase');
-        } finally {
+            const bundleContent = await analyzeBundleContent(testFilePath)
+            expect(bundleContent).not.toContain('redis')
+            expect(bundleContent).not.toContain('createRedisStorage')
+            expect(bundleContent).toContain('localStorage')
+            expect(bundleContent).toContain('BrowserStorageBase')
+        }
+        finally {
             if (fs.existsSync(testFilePath)) {
-                fs.unlinkSync(testFilePath);
+                fs.unlinkSync(testFilePath)
             }
         }
-    }, 10000);
+    }, 10000)
 
     it('should not include browser storage code in server bundle', async () => {
         const serverTestCode = `
@@ -95,24 +97,25 @@ describe('Tree Shaking Tests', () => {
                     prefix: 'test:'
                 });
             }
-        `;
+        `
 
-        const testFilePath = path.resolve(testTempDir, 'server-test.ts');
-        fs.writeFileSync(testFilePath, serverTestCode);
+        const testFilePath = path.resolve(testTempDir, 'server-test.ts')
+        fs.writeFileSync(testFilePath, serverTestCode)
 
         try {
-            const bundleContent = await analyzeBundleContent(testFilePath);
-            expect(bundleContent).not.toContain('localStorage');
-            expect(bundleContent).not.toContain('sessionStorage');
-            expect(bundleContent).not.toContain('BrowserStorageBase');
-            expect(bundleContent).toContain('redis');
-            expect(bundleContent).toContain('createRedisStorage');
-        } finally {
+            const bundleContent = await analyzeBundleContent(testFilePath)
+            expect(bundleContent).not.toContain('localStorage')
+            expect(bundleContent).not.toContain('sessionStorage')
+            expect(bundleContent).not.toContain('BrowserStorageBase')
+            expect(bundleContent).toContain('redis')
+            expect(bundleContent).toContain('createRedisStorage')
+        }
+        finally {
             if (fs.existsSync(testFilePath)) {
-                fs.unlinkSync(testFilePath);
+                fs.unlinkSync(testFilePath)
             }
         }
-    }, 10000);
+    }, 10000)
 
     it('should include only memory storage when specified', async () => {
         const memoryTestCode = `
@@ -121,21 +124,22 @@ describe('Tree Shaking Tests', () => {
             export async function initStorage() {
                 return createMemoryStorage();
             }
-        `;
+        `
 
-        const testFilePath = path.resolve(testTempDir, 'memory-test.ts');
-        fs.writeFileSync(testFilePath, memoryTestCode);
+        const testFilePath = path.resolve(testTempDir, 'memory-test.ts')
+        fs.writeFileSync(testFilePath, memoryTestCode)
 
         try {
-            const bundleContent = await analyzeBundleContent(testFilePath);
-            expect(bundleContent).toContain('MemoryStorage');
-            expect(bundleContent).not.toContain('redis');
-            expect(bundleContent).not.toContain('localStorage');
-            expect(bundleContent).not.toContain('sessionStorage');
-        } finally {
+            const bundleContent = await analyzeBundleContent(testFilePath)
+            expect(bundleContent).toContain('MemoryStorage')
+            expect(bundleContent).not.toContain('redis')
+            expect(bundleContent).not.toContain('localStorage')
+            expect(bundleContent).not.toContain('sessionStorage')
+        }
+        finally {
             if (fs.existsSync(testFilePath)) {
-                fs.unlinkSync(testFilePath);
+                fs.unlinkSync(testFilePath)
             }
         }
-    }, 10000);
-});
+    }, 10000)
+})

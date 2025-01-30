@@ -1,3 +1,5 @@
+import type { SchedulerOptions } from './scheduler/types'
+
 export type JobId = string
 
 export interface JobMetadata {
@@ -11,53 +13,39 @@ export interface JobMetadata {
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused'
 
-export interface CronJobOptions {
-  // The cron expression
+interface BaseCronJobOptions {
   expression: string
-  
-  // Timezone for the job, defaults to system timezone
-  timezone?: string
-  
-  // Maximum number of retries if job fails
   maxRetries?: number
-  
-  // Delay between retries in milliseconds
   retryDelay?: number
-  
-  // Maximum execution time in milliseconds
   timeout?: number
-  
-  // If true, only one instance of the job can run at a time
   exclusive?: boolean
-  
-  // If true, missed executions will be run immediately on startup
   catchUp?: boolean
 }
 
-export interface CronJob<T = any> {
-  // Unique identifier for the job
-  id: JobId
-  
-  // Name of the job for display/logging
-  name: string
-  
-  // The actual function to execute
-  execute: () => Promise<T>
-  
-  // Job configuration
-  options: CronJobOptions
-  
-  // Current status of the job
-  status: JobStatus
-  
-  // Metadata about job execution
-  metadata: JobMetadata
+export interface FlexibleCronJobOptions extends BaseCronJobOptions {
+  timezone?: string
 }
 
-export type JobEvent = 
-  | { type: 'started'; job: CronJob }
-  | { type: 'completed'; job: CronJob; result: any }
-  | { type: 'failed'; job: CronJob; error: Error }
-  | { type: 'retry'; job: CronJob; attempt: number }
-  | { type: 'paused'; job: CronJob }
-  | { type: 'resumed'; job: CronJob }
+export type StrictCronJobOptions = BaseCronJobOptions
+
+export type CronJobOptions<T extends SchedulerOptions = SchedulerOptions> =
+    T['timezone'] extends { strict: true }
+      ? StrictCronJobOptions
+      : FlexibleCronJobOptions
+
+export interface CronJob<T = any> {
+    id: JobId
+    name: string
+    execute: () => Promise<T>
+    options: CronJobOptions
+    status: JobStatus
+    metadata: JobMetadata
+}
+
+export type JobEvent =
+    | { type: 'started', job: CronJob }
+    | { type: 'completed', job: CronJob, result: any }
+    | { type: 'failed', job: CronJob, error: Error }
+    | { type: 'retry', job: CronJob, attempt: number }
+    | { type: 'paused', job: CronJob }
+    | { type: 'resumed', job: CronJob }
