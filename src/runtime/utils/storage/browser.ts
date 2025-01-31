@@ -1,35 +1,35 @@
-import type { CronJob } from '../../job/types'
-import type { CronStorage, StorageConfig, BaseStorageConfig } from '../types'
-import { BaseStorage } from './base'
-import { MemoryStorage } from './memory'
+import type { CronTask } from '../../types/task'
+import type { CronStorage, StorageConfig } from './types'
+import { BaseStorage, type BaseStorageConfig } from './environments/base'
+import { MemoryStorage } from './environments/memory'
 
 
 
-export abstract class BrowserStorageBase extends BaseStorage implements CronStorage {
+export abstract class BrowserBaseStorage extends BaseStorage implements CronStorage {
     protected abstract storage: Storage
 
     async init(): Promise<void> { }
 
-    async add(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronJob> {
-        const newJob = this.createJobObject(job)
+    async add(Task: Omit<CronTask, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronTask> {
+        const newTask = this.createTaskObject(Task)
 
         this.storage.setItem(
-            this.getKey(newJob.id),
-            JSON.stringify(newJob),
+            this.getKey(newTask.id),
+            JSON.stringify(newTask),
         )
 
-        return newJob
+        return newTask
     }
 
-    async get(id: string): Promise<CronJob | null> {
+    async get(id: string): Promise<CronTask | null> {
         const data = this.storage.getItem(this.getKey(id))
         if (!data) return null
 
         return JSON.parse(data)
     }
 
-    async getAll(): Promise<CronJob[]> {
-        const jobs: CronJob[] = []
+    async getAll(): Promise<CronTask[]> {
+        const Tasks: CronTask[] = []
 
         for (let i = 0; i < this.storage.length; i++) {
             const key = this.storage.key(i)
@@ -38,24 +38,24 @@ export abstract class BrowserStorageBase extends BaseStorage implements CronStor
                 const data = this.storage.getItem(key)
 
                 if (data) {
-                    jobs.push(JSON.parse(data))
+                    Tasks.push(JSON.parse(data))
                 }
             }
         }
 
-        return jobs
+        return Tasks
     }
 
-    async update(id: string, updates: Partial<CronJob>): Promise<CronJob> {
-        const job = await this.get(id)
-        if (!job) {
-            throw new Error(`Job with id ${id} not found`)
+    async update(id: string, updates: Partial<CronTask>): Promise<CronTask> {
+        const Task = await this.get(id)
+        if (!Task) {
+            throw new Error(`Task with id ${id} not found`)
         }
 
-        const updatedJob = this.updateJobObject(job, updates)
-        this.storage.setItem(this.getKey(id), JSON.stringify(updatedJob))
+        const updatedTask = this.updateTaskObject(Task, updates)
+        this.storage.setItem(this.getKey(id), JSON.stringify(updatedTask))
 
-        return updatedJob
+        return updatedTask
     }
 
     async remove(id: string): Promise<boolean> {
@@ -77,14 +77,14 @@ export abstract class BrowserStorageBase extends BaseStorage implements CronStor
     }
 }
 
-export class LocalStorage extends BrowserStorageBase {
+export class BrowserLocalStorage extends BrowserBaseStorage {
     protected storage: Storage = localStorage
     constructor(config?: BaseStorageConfig) {
         super(config)
     }
 }
 
-export class SessionStorage extends BrowserStorageBase {
+export class BrowserSessionStorage extends BrowserBaseStorage {
     protected storage: Storage = sessionStorage
     constructor(config?: BaseStorageConfig) {
         super(config)
@@ -97,13 +97,13 @@ export async function createBrowserStorage(options: StorageConfig): Promise<Cron
     }
 
     if (options.type === 'localStorage') {
-        const storage = new LocalStorage(options.config)
+        const storage = new BrowserLocalStorage(options.config)
         await storage.init()
         return storage
     }
 
     if (options.type === 'sessionStorage') {
-        const storage = new SessionStorage(options.config)
+        const storage = new BrowserSessionStorage(options.config)
         await storage.init()
         return storage
     }

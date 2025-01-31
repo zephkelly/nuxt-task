@@ -1,4 +1,7 @@
-import type { CronJob } from '../job/types'
+import type { CronTask } from '../../types/task'
+
+import type { BaseStorageConfig } from './environments/base'
+import type { RedisConfig } from './environments/redis'
 
 
 
@@ -6,16 +9,6 @@ export type BackendStorageType = 'memory' | 'redis' | 'database'
 export type FrontendStorageType = 'memory' | 'sessionStorage' | 'localStorage'
 
 export type StorageType = BackendStorageType | FrontendStorageType
-
-export interface BaseStorageConfig {
-    prefix?: string
-}
-
-export interface RedisConfig extends BaseStorageConfig {
-    url: string
-    password?: string
-    database?: number
-}
 
 export interface DatabaseConfig extends BaseStorageConfig {
     url: string
@@ -30,10 +23,10 @@ export type StorageConfig =
 
 export interface CronStorage {
     init(): Promise<void>
-    add(job: Omit<CronJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronJob>
-    get(id: string): Promise<CronJob | null>
-    getAll(): Promise<CronJob[]>
-    update(id: string, job: Partial<CronJob>): Promise<CronJob>
+    add(Task: Omit<CronTask, 'id' | 'createdAt' | 'updatedAt'>): Promise<CronTask>
+    get(id: string): Promise<CronTask | null>
+    getAll(): Promise<CronTask[]>
+    update(id: string, Task: Partial<CronTask>): Promise<CronTask>
     remove(id: string): Promise<boolean>
     clear(): Promise<void>
 }

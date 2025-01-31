@@ -1,5 +1,5 @@
-import type { JobEvent } from '../types'
 import type { FlexibleTimezoneModuleOptions, ModuleOptions, StrictTimezoneModuleOptions } from '~/src/module'
+import type { CronTaskEvent } from '~/src/runtime/types/task'
 
 
 
@@ -11,7 +11,7 @@ export interface SchedulerBaseOptions {
         retryDelay: number
     }
     defaultTimeout?: number
-    handleMissedJobs?: boolean
+    handleMissedTasks?: boolean
 }
 
 
@@ -20,23 +20,23 @@ export interface SchedulerOptions extends SchedulerBaseOptions {
 }
 
 export type SchedulerEvents = {
-    [K in JobEvent['type']as `job-${K}`]: (event: Extract<JobEvent, { type: K }>) => void;
+    [K in CronTaskEvent['type']as `task-${K}`]: (event: Extract<CronTaskEvent, { type: K }>) => void;
 } & {
     error: (error: Error) => void
     [key: string]: (...args: any[]) => void
 }
 
 export interface SchedulerStats {
-    totalJobsRun: number
-    totalJobsFailed: number
-    totalJobsRetried: number
-    activeJobs: number
-    queuedJobs: number
+    totalTasksRun: number
+    totalTasksFailed: number
+    totalTasksRetried: number
+    activeTasks: number
+    queuedTasks: number
     lastTick?: Date
     uptime: number
 }
 
-export interface ExtendedJobMetadata {
+export interface ExtendedTaskMetadata {
     lastRunDuration?: number
     averageRuntime?: number
     failureRate?: number
@@ -47,7 +47,7 @@ export interface ExtendedJobMetadata {
     modified: Date
 }
 
-export interface JobExecutionResult<T = any> {
+export interface TaskExecutionResult<T = any> {
     success: boolean
     result?: T
     error?: Error
@@ -56,11 +56,11 @@ export interface JobExecutionResult<T = any> {
     endTime: Date
 }
 
-export interface JobContext {
+export interface TaskContext {
     attempt: number
     previousError?: Error
     startTime: Date
-    metadata: ExtendedJobMetadata
+    metadata: ExtendedTaskMetadata
 }
 
 export interface TypedEventEmitter<Events extends Record<string | symbol, (...args: any[]) => any>> {

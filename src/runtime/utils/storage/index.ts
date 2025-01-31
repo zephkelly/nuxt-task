@@ -1,24 +1,38 @@
+/////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////
+/////////////                             ///////////////
+/////////////       Storage Barrel        ///////////////
+/////////////           Exports           ///////////////
+/////////////                             ///////////////
+/////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////
+
+export * from './environments'
+
+//---/  Server  /------------------------------------------
+export {
+    createServerStorage
+} from './server'
+
+
+//---/  Browser  /---------------------------------------
+export {
+    BrowserBaseStorage,
+    BrowserLocalStorage,
+    BrowserSessionStorage,
+
+    createBrowserStorage
+} from './browser'
+
+
+//---/  General Types  /----------------------------------
 export type {
+    CronStorage,
+    StorageConfig,
+
     StorageType,
     BackendStorageType,
     FrontendStorageType,
-    StorageConfig,
-    BaseStorageConfig,
-    RedisConfig,
-    DatabaseConfig,
-    CronStorage,
+
+    DatabaseConfig
 } from './types'
-
-export {
-    BrowserStorageBase,
-    LocalStorage,
-    SessionStorage,
-    createBrowserStorage,
-} from './environment/browser'
-
-export { createRedisStorage } from './environment/redis'
-
-export { BaseStorage } from './environment/base'
-export { MemoryStorage, createMemoryStorage } from './environment/memory'
-
-export { createStorage as createServerStorage } from './server'

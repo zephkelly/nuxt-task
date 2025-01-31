@@ -2,30 +2,35 @@ import { DateTime } from 'luxon'
 import TimezoneUtils from '../../timezone'
 
 import { EventEmitter } from 'node:events'
-import type { CronJob, JobEvent, JobId, CronJobOptions, FlexibleCronJobOptions } from '../types'
+import type { CronTask, CronTaskEvent, TaskId, CronTaskOptions, FlexibleCronTaskOptions } from '../../../types/task'
 import type { CronStorage } from '../../storage/types'
-import CronExpressionUtils, { type ParsedExpression } from '../../expression/parser'
-import type { SchedulerOptions, SchedulerStats, SchedulerBaseOptions } from './types'
-import { JobQueue } from './queue'
 
-import type { ModuleOptions } from '~/src/module'
+
+import { type ParsedExpression } from './../../../types/expression'
+import CronExpressionParser from './../../../utils/expression/parser'
+
+
+import type { SchedulerOptions, SchedulerStats, SchedulerBaseOptions } from './types'
+import { TaskQueue } from './queue'
+
+import type { ModuleOptions } from './../../../../module'
 import { getModuleOptions } from '../../config'
 
 
 
 export class Scheduler extends EventEmitter {
     private readonly options: SchedulerOptions
-    private queue: JobQueue
+    private queue: TaskQueue
     private storage: CronStorage
     private intervalId?: NodeJS.Timeout
     private running: boolean = false
     private startTime?: Date
     private stats: SchedulerStats = {
-        totalJobsRun: 0,
-        totalJobsFailed: 0,
-        totalJobsRetried: 0,
-        activeJobs: 0,
-        queuedJobs: 0,
+        totalTasksRun: 0,
+        totalTasksFailed: 0,
+        totalTasksRetried: 0,
+        activeTasks: 0,
+        queuedTasks: 0,
         uptime: 0,
     }
 
@@ -39,7 +44,7 @@ export class Scheduler extends EventEmitter {
             throw new Error(`Invalid timezone: ${moduleOptions.timezone.type}`)
         }
 
-        this.queue = new JobQueue()
+        this.queue = new TaskQueue()
         this.storage = storage
 
         this.options = {
@@ -51,33 +56,33 @@ export class Scheduler extends EventEmitter {
     }
 
     private setupEventForwarding(): void {
-        type QueueEventType = JobEvent['type']
-        type SchedulerEventType = `job-${QueueEventType}`
+        type QueueEventType = CronTaskEvent['type']
+        type SchedulerEventType = `task-${QueueEventType}`
 
         const eventMapping: Record<QueueEventType, SchedulerEventType> = {
-            started: 'job-started',
-            completed: 'job-completed',
-            failed: 'job-failed',
-            retry: 'job-retry',
-            paused: 'job-paused',
-            resumed: 'job-resumed',
+            started: 'task-started',
+            completed: 'task-completed',
+            failed: 'task-failed',
+            retry: 'task-retry',
+            paused: 'task-paused',
+            resumed: 'task-resumed',
         } as const
 
         Object.entries(eventMapping).forEach(([queueEvent, schedulerEvent]) => {
-            this.queue.on(queueEvent as QueueEventType, (event: JobEvent) => {
+            this.queue.on(queueEvent as QueueEventType, (event: CronTaskEvent) => {
                 switch (event.type) {
-                case 'completed':
-                    this.updateJobNextRun(event.job)
-                    break
-                case 'failed':
-                    this.stats.totalJobsFailed++
-                    break
-                case 'retry':
-                    this.stats.totalJobsRetried++
-                    break
-                case 'started':
-                    this.stats.totalJobsRun++
-                    break
+                    case 'completed':
+                        this.updateNextRunTime(event.task)
+                        break
+                    case 'failed':
+                        this.stats.totalTasksFailed++
+                        break
+                    case 'retry':
+                        this.stats.totalTasksRetried++
+                        break
+                    case 'started':
+                        this.stats.totalTasksRun++
+                        break
                 }
                 this.emit(schedulerEvent, event)
             })
@@ -102,8 +107,8 @@ export class Scheduler extends EventEmitter {
             this.startTime = new Date()
             this.intervalId = setInterval(() => this.tick(), this.options.tickInterval)
 
-            if (this.options.handleMissedJobs) {
-                await this.handleMissedJobs()
+            if (this.options.handleMissedTasks) {
+                await this.handleMissedTasks()
             }
         }
         catch (error: unknown) {
@@ -122,13 +127,13 @@ export class Scheduler extends EventEmitter {
                 clearInterval(this.intervalId)
             }
 
-            const activeJobs = this.queue.getAll().filter(job =>
-                job.status === 'running',
+            const activeTask = this.queue.getAll().filter(task =>
+                task.status === 'running',
             )
 
-            if (activeJobs.length > 0) {
+            if (activeTask.length > 0) {
                 await Promise.all(
-                activeJobs.map(job => this.waitForJob(job.id)),
+                    activeTask.map(task => this.waitForTask(task.id)),
                 )
             }
 
@@ -141,94 +146,94 @@ export class Scheduler extends EventEmitter {
         }
     }
 
-    private getEffectiveTimezone(jobOptions: CronJobOptions): string {
+    private getEffectiveTimezone(taskOptions: CronTaskOptions): string {
         if (this.options.timezone?.strict) {
             return this.options.timezone.type
         }
-        return (jobOptions as FlexibleCronJobOptions).timezone
+        return (taskOptions as FlexibleCronTaskOptions).timezone
             || this.options.timezone?.type
             || 'UTC'
     }
 
-    async addJob(job: Omit<CronJob, 'id' | 'metadata'>): Promise<CronJob> {
+    async addTask(task: Omit<CronTask, 'id' | 'metadata'>): Promise<CronTask> {
         try {
-            if (this.options.timezone?.strict && 'timezone' in job.options) {
-                if (job.options.timezone !== this.options.timezone.type) {
+            if (this.options.timezone?.strict && 'timezone' in task.options) {
+                if (task.options.timezone !== this.options.timezone.type) {
                     throw new Error(
-                        'Cannot set per-job timezone when timezone.strict is enabled. '
+                        'Cannot set per-task timezone when timezone.strict is enabled. '
                         + 'Use the module-level timezone configuration instead.'
                     )
                 }
             }
-        
-            const effectiveTimezone = this.getEffectiveTimezone(job.options)
-        
-            const newJob: CronJob = {
-                ...job,
+
+            const effectiveTimezone = this.getEffectiveTimezone(task.options)
+
+            const newTask: CronTask = {
+                ...task,
                 id: crypto.randomUUID(),
                 options: {
-                    ...job.options,
+                    ...task.options,
                     timezone: effectiveTimezone,
                 },
                 metadata: {
-                runCount: 0,
-                createdAt: new Date(),
-                updatedAt: new Date(),
+                    runCount: 0,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
                 },
             }
 
             const moduleOptions = getModuleOptions()
-        
-            CronExpressionUtils.parseCronExpression(job.options.expression, {
+
+            CronExpressionParser.parseCronExpression(newTask.options.expression, {
                 timezone: {
                     ...moduleOptions.timezone,
                     type: effectiveTimezone,
                 },
                 validateTimezone: this.options.timezone?.validate ?? true,
             })
-        
-            newJob.metadata.nextRun = this.getNextRunTime(newJob)
-        
-            this.queue.add(newJob)
+
+            newTask.metadata.nextRun = this.getNextRunTime(newTask)
+
+            this.queue.add(newTask)
             await this.persist()
-        
-            return newJob
+
+            return newTask
         }
         catch (error: unknown) {
-            const wrappedError = this.handleError('Failed to add job', error)
+            const wrappedError = this.handleError('Failed to add task', error)
             this.emit('error', wrappedError)
             throw wrappedError
         }
     }
 
-    async removeJob(jobId: JobId): Promise<void> {
-        const removed = this.queue.remove(jobId)
+    async removeTask(taskId: TaskId): Promise<void> {
+        const removed = this.queue.remove(taskId)
 
         if (removed) {
             await this.persist()
         }
     }
 
-    async pauseJob(jobId: JobId): Promise<void> {
-        this.queue.pause(jobId)
+    async pauseTask(taskId: TaskId): Promise<void> {
+        this.queue.pause(taskId)
         await this.persist()
     }
 
-    async resumeJob(jobId: JobId): Promise<void> {
-        const job = this.queue.get(jobId)
+    async resumeTask(taskId: TaskId): Promise<void> {
+        const task = this.queue.get(taskId)
 
-        if (job && job.status === 'paused') {
-            this.queue.resume(jobId)
-            job.metadata.nextRun = this.getNextRunTime(job)
+        if (task && task.status === 'paused') {
+            this.queue.resume(taskId)
+            task.metadata.nextRun = this.getNextRunTime(task)
             await this.persist()
         }
     }
 
-    getJob(jobId: JobId): CronJob | undefined {
-        return this.queue.get(jobId)
+    getTask(taskId: TaskId): CronTask | undefined {
+        return this.queue.get(taskId)
     }
 
-    getAllJobs(): CronJob[] {
+    getAllTasks(): CronTask[] {
         return this.queue.getAll()
     }
 
@@ -240,16 +245,16 @@ export class Scheduler extends EventEmitter {
         return { ...this.stats }
     }
 
-    private waitForJob(jobId: JobId): Promise<void> {
+    private waitForTask(taskId: TaskId): Promise<void> {
         return new Promise((resolve) => {
             const checkCompletion = () => {
-                const job = this.queue.get(jobId)
+                const task = this.queue.get(taskId)
 
-                if (!job || job.status !== 'running') {
-                resolve()
+                if (!task || task.status !== 'running') {
+                    resolve()
                 }
                 else {
-                setTimeout(checkCompletion, 100)
+                    setTimeout(checkCompletion, 100)
                 }
             }
 
@@ -257,15 +262,15 @@ export class Scheduler extends EventEmitter {
         })
     }
 
-    public getNextRunTime(job: CronJob): Date {
+    public getNextRunTime(task: CronTask): Date {
         try {
             const effectiveTimezone = this.options.timezone?.strict
                 ? this.options.timezone.type
-                : (job.options.timezone || this.options.timezone?.type || 'UTC')
+                : (task.options.timezone || this.options.timezone?.type || 'UTC')
 
             const moduleOptions = getModuleOptions()
 
-            const parsed = CronExpressionUtils.parseCronExpression(job.options.expression, {
+            const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
                 timezone: {
                     ...moduleOptions.timezone,
                     type: effectiveTimezone,
@@ -275,7 +280,7 @@ export class Scheduler extends EventEmitter {
             return this.calculateNextRunTime(parsed)
         }
         catch (error: unknown) {
-            const wrappedError = this.handleError(`Invalid cron expression for job ${job.id}`, error)
+            const wrappedError = this.handleError(`Invalid cron expression for task ${task.id}`, error)
             this.emit('error', wrappedError)
             return new Date(Date.now() + 24 * 60 * 60 * 1000)
         }
@@ -350,7 +355,7 @@ export class Scheduler extends EventEmitter {
                 && parsed.dayOfWeek.includes(dayOfWeek)
                 && candidate > tzNow.toJSDate()
             ) {
-                const convertedTimezone =TimezoneUtils.convertTimezone(
+                const convertedTimezone = TimezoneUtils.convertTimezone(
                     candidate,
                     parsed.timezone,
                     'UTC'
@@ -365,63 +370,63 @@ export class Scheduler extends EventEmitter {
 
     private async tick(): Promise<void> {
         if (!this.running) return
-    
+
         try {
             const now = new Date()
             this.updateStats()
-    
-            const jobs = this.queue.getAll()
-    
-            const jobsToRun = jobs.filter((job) => {
+
+            const tasks = this.queue.getAll()
+
+            const tasksToRun = tasks.filter((task) => {
                 if (
-                    job.status === 'paused'
-                    || !job.metadata.nextRun
-                    || this.queue.isRunning(job.id)
+                    task.status === 'paused'
+                    || !task.metadata.nextRun
+                    || this.queue.isRunning(task.id)
                 ) {
                     return false
                 }
-    
+
                 const effectiveTimezone = this.options.timezone?.strict
                     ? this.options.timezone.type
-                    : (job.options.timezone || this.options.timezone?.type || 'UTC')
-    
+                    : (task.options.timezone || this.options.timezone?.type || 'UTC')
+
                 const moduleOptions = getModuleOptions()
 
-                const parsed = CronExpressionUtils.parseCronExpression(job.options.expression, {
+                const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
                     timezone: {
                         ...moduleOptions.timezone,
                         type: effectiveTimezone,
                     },
                     validateTimezone: this.options.timezone?.validate ?? true,
                 })
-    
+
                 const tzNow = TimezoneUtils.convertTimezone(
                     now,
                     'UTC',
                     parsed.timezone
                 )
-    
+
                 const tzNextRun = TimezoneUtils.convertTimezone(
-                    job.metadata.nextRun,
+                    task.metadata.nextRun,
                     'UTC',
                     parsed.timezone
                 )
-    
+
                 if (typeof tzNow === 'string' || typeof tzNextRun === 'string') {
                     throw new Error('Unexpected string return from timezone conversion')
                 }
-    
+
                 const shouldRun = tzNextRun.toJSDate() <= tzNow.toJSDate()
                 return shouldRun
             })
-    
-    
-            const currentRunning = jobs.filter(job => job.status === 'running').length
+
+
+            const currentRunning = tasks.filter(task => task.status === 'running').length
             const available = Math.max(0, this.options.maxConcurrent! - currentRunning)
-            const toExecute = jobsToRun.slice(0, available)
-    
+            const toExecute = tasksToRun.slice(0, available)
+
             await Promise.all(
-                toExecute.map(job => this.queue.executeJob(job.id))
+                toExecute.map(task => this.queue.executeTask(task.id))
             )
         }
         catch (error: unknown) {
@@ -430,45 +435,45 @@ export class Scheduler extends EventEmitter {
         }
     }
 
-    private updateJobNextRun(job: CronJob): void {
-        job.metadata.nextRun = this.getNextRunTime(job)
+    private updateNextRunTime(task: CronTask): void {
+        task.metadata.nextRun = this.getNextRunTime(task)
 
         this.persist().catch((error: unknown) => {
-            const wrappedError = this.handleError('Failed to persist job state', error)
+            const wrappedError = this.handleError('Failed to persist task state', error)
             this.emit('error', wrappedError)
         })
     }
 
-    private async handleMissedJobs(): Promise<void> {
+    private async handleMissedTasks(): Promise<void> {
         try {
             const now = new Date()
-            const jobs = this.queue.getAll()
+            const tasks = this.queue.getAll()
 
-            for (const job of jobs) {
+            for (const task of tasks) {
                 if (
-                job.options.catchUp
-                            && job.metadata.nextRun
-                && job.metadata.nextRun < now
+                    task.options.catchUp
+                    && task.metadata.nextRun
+                    && task.metadata.nextRun < now
                 ) {
-                await this.queue.executeJob(job.id)
-                job.metadata.nextRun = this.getNextRunTime(job)
+                    await this.queue.executeTask(task.id)
+                    task.metadata.nextRun = this.getNextRunTime(task)
                 }
             }
         }
         catch (error: unknown) {
-            const wrappedError = this.handleError('Failed to handle missed jobs', error)
+            const wrappedError = this.handleError('Failed to handle missed tasks', error)
             this.emit('error', wrappedError)
             throw wrappedError
         }
     }
 
     private updateStats(): void {
-        this.stats.activeJobs = this.queue.getAll().filter(
-            job => job.status === 'running',
+        this.stats.activeTasks = this.queue.getAll().filter(
+            task => task.status === 'running',
         ).length
 
-        this.stats.queuedJobs = this.queue.getAll().filter(
-            job => job.status === 'pending',
+        this.stats.queuedTasks = this.queue.getAll().filter(
+            task => task.status === 'pending',
         ).length
     }
 
@@ -479,16 +484,15 @@ export class Scheduler extends EventEmitter {
      */
     private async persist(): Promise<void> {
         try {
-            const jobs = this.queue.getAll()
-            await Promise.all(jobs.map(async (job) => {
-                const existingJob = await this.storage.get(job.id)
+            const tasks = this.queue.getAll()
+            await Promise.all(tasks.map(async (task) => {
+                const exsitingTask = await this.storage.get(task.id)
 
-                if (existingJob) {
-                await this.storage.update(job.id, job)
+                if (exsitingTask) {
+                    await this.storage.update(task.id, task)
                 }
                 else {
-                await this.storage.add(job)
-                const addedJob = await this.storage.get(job.id)
+                    await this.storage.add(task)
                 }
             }))
         }
@@ -504,8 +508,8 @@ export class Scheduler extends EventEmitter {
      */
     private async restore(): Promise<void> {
         try {
-            const jobs = await this.storage.getAll()
-            jobs.forEach(job => this.queue.add(job))
+            const tasks = await this.storage.getAll()
+            tasks.forEach(task => this.queue.add(task))
         }
         catch (error: unknown) {
             const wrappedError = this.handleError('Failed to restore scheduler state', error)

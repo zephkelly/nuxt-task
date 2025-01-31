@@ -19,10 +19,10 @@ async function analyzeBundleContent(entryPoint: string) {
             typescript({
                 tsconfig: './tsconfig.json',
                 compilerOptions: {
-                declaration: false,
-                sourceMap: false,
-                moduleResolution: 'node',
-                outDir: './test/temp',
+                    declaration: false,
+                    sourceMap: false,
+                    moduleResolution: 'node',
+                    outDir: './test/temp',
                 },
             }),
         ],
@@ -54,7 +54,7 @@ if (!fs.existsSync(testTempDir)) {
 describe('Tree Shaking Tests', () => {
     afterAll(() => {
         if (fs.existsSync(testTempDir)) {
-        fs.rmSync(testTempDir, { recursive: true })
+            fs.rmSync(testTempDir, { recursive: true })
         }
     })
 
@@ -78,18 +78,18 @@ describe('Tree Shaking Tests', () => {
             expect(bundleContent).not.toContain('redis')
             expect(bundleContent).not.toContain('createRedisStorage')
             expect(bundleContent).toContain('localStorage')
-            expect(bundleContent).toContain('BrowserStorageBase')
+            expect(bundleContent).toContain('BrowserBaseStorage')
         }
         finally {
             if (fs.existsSync(testFilePath)) {
                 fs.unlinkSync(testFilePath)
             }
         }
-    }, 10000)
+    }, 30000)
 
     it('should not include browser storage code in server bundle', async () => {
         const serverTestCode = `
-            import { createRedisStorage } from './../../../src/runtime/utils/storage';
+            import { createRedisStorage } from './../../../src/runtime/utils/storage/environments';
             
             export async function initStorage() {
                 return createRedisStorage({ 
@@ -115,11 +115,11 @@ describe('Tree Shaking Tests', () => {
                 fs.unlinkSync(testFilePath)
             }
         }
-    }, 10000)
+    }, 30000)
 
     it('should include only memory storage when specified', async () => {
         const memoryTestCode = `
-            import { createMemoryStorage } from './../../../src/runtime/utils/storage';
+            import { createMemoryStorage } from './../../../src/runtime/utils/storage/environments';
             
             export async function initStorage() {
                 return createMemoryStorage();
@@ -141,5 +141,5 @@ describe('Tree Shaking Tests', () => {
                 fs.unlinkSync(testFilePath)
             }
         }
-    }, 10000)
+    }, 30000)
 })

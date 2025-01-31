@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import CronExpressionUtils, { CronExpressionParseError} from '../../../src/runtime/utils/expression/parser'
+import CronExpressionUtils from '../../../src/runtime/utils/expression/parser'
+import { CronExpressionParseError } from '../../../src/runtime/types/expression'
 
 
 

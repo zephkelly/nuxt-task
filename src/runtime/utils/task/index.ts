@@ -1,22 +1,22 @@
 import type {
-    CronJobOptions,
-    FlexibleCronJobOptions,
-} from './types'
+    CronTaskOptions,
+    FlexibleCronTaskOptions,
+} from '../../types/task'
 
 import type { ModuleOptions, StrictTimezoneModuleOptions } from '~/src/module'
 
 
 
-export function validateJobTimezone<T extends ModuleOptions>(
+export function validateTaskTimezone<T extends ModuleOptions>(
     moduleOptions: T,
-    jobOptions: CronJobOptions<T>,
+    taskOptions: CronTaskOptions<T>,
 ): void {
     const isStrictMode = moduleOptions.timezone.strict
-    const hasJobTimezone = 'timezone' in jobOptions
+    const hasTaskTimezone = 'timezone' in taskOptions
 
-    if (isStrictMode && hasJobTimezone) {
+    if (isStrictMode && hasTaskTimezone) {
         throw new Error(
-            'Cannot set per-job timezone when timezone.strict is enabled. '
+            'Cannot set per-task timezone when timezone.strict is enabled. '
             + 'Use the module-level timezone configuration instead.',
         )
     }
@@ -30,11 +30,11 @@ export function isStrictTimezoneOptions(
 
 export function getEffectiveTimezone<T extends ModuleOptions>(
     moduleOptions: T,
-    jobOptions: CronJobOptions<T>,
+    taskOptions: CronTaskOptions<T>,
 ): string {
     if (isStrictTimezoneOptions(moduleOptions)) {
         return moduleOptions.timezone.type
     }
 
-    return (jobOptions as FlexibleCronJobOptions).timezone || moduleOptions.timezone.type || 'UTC'
+    return (taskOptions as FlexibleCronTaskOptions).timezone || moduleOptions.timezone.type || 'UTC'
 }

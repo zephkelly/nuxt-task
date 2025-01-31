@@ -2,13 +2,13 @@ import type { StorageConfig, CronStorage } from './types'
 
 
 
-export async function createStorage(options: StorageConfig): Promise<CronStorage> {
+export async function createServerStorage(options: StorageConfig): Promise<CronStorage> {
     if (options.type === 'memory') {
-        return (await import('./environment/memory')).createMemoryStorage()
+        return (await import('./environments/memory')).createMemoryStorage()
     }
 
     if (options.type === 'redis') {
-        const { createRedisStorage } = await import('./environment/redis')
+        const { createRedisStorage } = await import('./environments/redis')
         return createRedisStorage(options.config)
     }
 

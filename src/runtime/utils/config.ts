@@ -11,8 +11,8 @@ declare module '@nuxt/schema' {
 
 
 export const defaultModuleOptions: ModuleOptions = {
-    serverJobs: true,
-    clientJobs: false,
+    serverTasks: true,
+    clientTasks: false,
     storage: {
         type: 'memory',
     },
@@ -45,10 +45,10 @@ export function validateModuleOptions(options: ModuleOptions): boolean {
     if (!options.timezone?.type) {
         return false
     }
-    
+
     if (options.timezone.strict && options.timezone.type !== moduleOptions.timezone.type) {
         return false
     }
-    
+
     return true
 }

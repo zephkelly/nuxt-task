@@ -1,5 +1,5 @@
-import type { CronJob, CronJobOptions } from './types'
-import CronExpressionUtils  from '../expression/parser'
+import type { CronTask, CronTaskOptions } from '../../types/task'
+import CronExpressionUtils from '../expression/parser'
 
 
 
@@ -8,14 +8,14 @@ export interface ValidationResult {
     errors: string[]
 }
 
-export class JobValidationError extends Error {
+export class TaskValidationError extends Error {
     constructor(message: string) {
         super(message)
-        this.name = 'JobValidationError'
+        this.name = 'TaskValidationError'
     }
 }
 
-export class JobValidator {
+export class TaskValidator {
     private static readonly NAME_MAX_LENGTH = 100
     private static readonly MIN_TIMEOUT = 1000 // 1 second
     private static readonly MAX_TIMEOUT = 24 * 60 * 60 * 1000 // 24 hours
@@ -24,53 +24,53 @@ export class JobValidator {
     private static readonly MAX_RETRIES = 10
 
     /**
-     * Validates a job's configuration
-     * @throws {JobValidationError} If validation fails
+     * Validates a Task's configuration
+     * @throws {TaskValidationError} If validation fails
      */
-    static validateJob(job: CronJob): ValidationResult {
+    static validateTask(Task: CronTask): ValidationResult {
         const errors: string[] = []
 
-        if (!job.id) errors.push('Job ID is required')
-        if (!job.name) errors.push('Job name is required')
-        if (!job.execute || typeof job.execute !== 'function') {
-            errors.push('Job must have a valid execute function')
+        if (!Task.id) errors.push('Task ID is required')
+        if (!Task.name) errors.push('Task name is required')
+        if (!Task.execute || typeof Task.execute !== 'function') {
+            errors.push('Task must have a valid execute function')
         }
 
-        if (job.name && job.name.length > this.NAME_MAX_LENGTH) {
-            errors.push(`Job name must not exceed ${this.NAME_MAX_LENGTH} characters`)
+        if (Task.name && Task.name.length > this.NAME_MAX_LENGTH) {
+            errors.push(`Task name must not exceed ${this.NAME_MAX_LENGTH} characters`)
         }
-        
-        if (job.name && !/^[\w\s-]+$/.test(job.name)) {
-            errors.push('Job name must only contain letters, numbers, spaces, and hyphens')
+
+        if (Task.name && !/^[\w\s-]+$/.test(Task.name)) {
+            errors.push('Task name must only contain letters, numbers, spaces, and hyphens')
         }
 
         const validStatuses = ['pending', 'running', 'completed', 'failed', 'paused']
-        if (job.status && !validStatuses.includes(job.status)) {
-            errors.push(`Invalid job status. Must be one of: ${validStatuses.join(', ')}`)
+        if (Task.status && !validStatuses.includes(Task.status)) {
+            errors.push(`Invalid Task status. Must be one of: ${validStatuses.join(', ')}`)
         }
 
-        if (job.options) {
-            const optionsResult = this.validateJobOptions(job.options)
+        if (Task.options) {
+            const optionsResult = this.validateTaskOptions(Task.options)
             errors.push(...optionsResult.errors)
         }
 
-        if (job.metadata) {
-            if (typeof job.metadata.runCount !== 'number') {
+        if (Task.metadata) {
+            if (typeof Task.metadata.runCount !== 'number') {
                 errors.push('Metadata runCount must be a number')
             }
-            if (job.metadata.createdAt && !(job.metadata.createdAt instanceof Date)) {
+            if (Task.metadata.createdAt && !(Task.metadata.createdAt instanceof Date)) {
                 errors.push('Metadata createdAt must be a Date object')
             }
-            if (job.metadata.updatedAt && !(job.metadata.updatedAt instanceof Date)) {
+            if (Task.metadata.updatedAt && !(Task.metadata.updatedAt instanceof Date)) {
                 errors.push('Metadata updatedAt must be a Date object')
             }
-            if (job.metadata.nextRun && !(job.metadata.nextRun instanceof Date)) {
+            if (Task.metadata.nextRun && !(Task.metadata.nextRun instanceof Date)) {
                 errors.push('Metadata nextRun must be a Date object')
             }
-            if (job.metadata.lastRun && !(job.metadata.lastRun instanceof Date)) {
+            if (Task.metadata.lastRun && !(Task.metadata.lastRun instanceof Date)) {
                 errors.push('Metadata lastRun must be a Date object')
             }
-            if (job.metadata.lastError && !(job.metadata.lastError instanceof Error)) {
+            if (Task.metadata.lastError && !(Task.metadata.lastError instanceof Error)) {
                 errors.push('Metadata lastError must be an Error object')
             }
         }
@@ -81,7 +81,7 @@ export class JobValidator {
         }
     }
 
-    static validateJobOptions(options: CronJobOptions): ValidationResult {
+    static validateTaskOptions(options: CronTaskOptions): ValidationResult {
         const errors: string[] = []
 
         if (!options.expression) {
@@ -145,3 +145,5 @@ export class JobValidator {
         }
     }
 }
+
+export default TaskValidator

@@ -9,8 +9,8 @@ import { defaultModuleOptions, setModuleOptions } from './runtime/utils/config'
 
 
 interface BaseModuleOptions {
-    serverJobs?: boolean
-    clientJobs?: boolean
+    serverTasks?: boolean
+    clientTasks?: boolean
     storage: {
         type: StorageType
         config?: Record<string, any>
@@ -42,7 +42,7 @@ export default defineNuxtModule<ModuleOptions>({
         const resolver = createResolver(import.meta.url)
 
         setModuleOptions(_options)
-        
+
         _nuxt.options.runtimeConfig.cron = defu(
             _nuxt.options.runtimeConfig.cron,
             _options
