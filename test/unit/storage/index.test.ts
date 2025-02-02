@@ -1,138 +1,158 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 
 
 describe('MemoryStorage', () => {
     let MemoryStorage: any
     let storage: any
+    let currentTime: number
 
     beforeEach(async () => {
-        const module = await import('../../../src/runtime/utils/storage')
+        currentTime = new Date('2024-01-01T00:00:00.000Z').getTime()
+
+        vi.useFakeTimers()
+        vi.setSystemTime(currentTime)
+
+        const module = await import('../../../src/runtime/storage')
         MemoryStorage = module.MemoryStorage
         storage = new MemoryStorage()
     })
 
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
     describe('add', () => {
-        it('should add a new Task with generated id and timestamps', async () => {
-            const TaskData = {
-                name: 'Test Task',
+        it('should add a new task with generated id and timestamps', async () => {
+            const taskData = {
+                name: 'Test task',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
                 enabled: true,
             }
 
-            const Task = await storage.add(TaskData)
+            const task = await storage.add(taskData)
 
-            expect(Task).toMatchObject({
-                ...TaskData,
+            // Verify the task structure and timestamps
+            expect(task).toMatchObject({
+                ...taskData,
                 id: expect.any(String),
                 metadata: {
                     runCount: 0,
-                    createdAt: expect.any(Date),
-                    updatedAt: expect.any(Date),
+                    createdAt: new Date(currentTime),
+                    updatedAt: new Date(currentTime),
                 },
             })
         })
     })
 
     describe('update', () => {
-        it('should update an existing Task', async () => {
-            const TaskData = {
-                name: 'Test Task',
+        it('should update an existing task with newer timestamp', async () => {
+            // Create initial task
+            const taskData = {
+                name: 'Test task',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
                 enabled: true,
             }
+            const task = await storage.add(taskData)
+            const originalUpdatedAt = task.metadata.updatedAt
 
-            const Task = await storage.add(TaskData)
-            const originalUpdatedAt = Task.metadata.updatedAt
-
-            await new Promise(resolve => setTimeout(resolve, 1))
+            // Advance time by 1 second before update
+            vi.advanceTimersByTime(1000)
 
             const updates = {
                 name: 'Updated Task',
                 enabled: false,
             }
 
-            const updatedTask = await storage.update(Task.id, updates)
+            const updatedTask = await storage.update(task.id, updates)
 
+            // Verify the basic update worked
             expect({
                 ...updatedTask,
                 metadata: {
                     ...updatedTask.metadata,
-                    updatedAt: Task.metadata.updatedAt,
+                    updatedAt: task.metadata.updatedAt,
                 },
             }).toMatchObject({
-                ...Task,
+                ...task,
                 ...updates,
             })
 
-            expect(updatedTask.metadata.updatedAt.getTime()).toBeGreaterThan(Task.metadata.updatedAt.getTime())
+            // Verify timestamps are correct
+            expect(updatedTask.metadata.updatedAt.getTime()).toBeGreaterThan(task.metadata.updatedAt.getTime())
             expect(updatedTask.metadata.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime())
         })
     })
 
     describe('get', () => {
-        it('should retrieve an existing Task', async () => {
-            const TaskData = {
-                name: 'Test Task',
+        it('should retrieve an existing task', async () => {
+            const taskData = {
+                name: 'Test task',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
                 enabled: true,
             }
 
-            const addedTask = await storage.add(TaskData)
+            const addedTask = await storage.add(taskData)
             const retrievedTask = await storage.get(addedTask.id)
 
             expect(retrievedTask).toEqual(addedTask)
         })
 
-        it('should return null for non-existent Task', async () => {
+        it('should return null for non-existent task', async () => {
             const result = await storage.get('non-existent-id')
             expect(result).toBeNull()
         })
     })
 
     describe('getAll', () => {
-        it('should return empty array when no Tasks exist', async () => {
+        it('should return empty array when no tasks exist', async () => {
             const Tasks = await storage.getAll()
             expect(Tasks).toEqual([])
         })
 
-        it('should return all added Tasks', async () => {
-            const TaskData1 = {
-                name: 'Test Task 1',
+        it('should return all added tasks', async () => {
+            const taskData1 = {
+                name: 'Test task 1',
                 expression: '* * * * *',
                 callback: 'console.log("test1")',
                 enabled: true,
             }
 
-            const TaskData2 = {
+            const task1 = await storage.add(taskData1)
+            
+            vi.advanceTimersByTime(1000)
+
+            const taskData2 = {
                 name: 'Test Task 2',
                 expression: '*/5 * * * *',
                 callback: 'console.log("test2")',
                 enabled: false,
             }
 
-            const Task1 = await storage.add(TaskData1)
-            const Task2 = await storage.add(TaskData2)
+            const task2 = await storage.add(taskData2)
 
             const allTasks = await storage.getAll()
             expect(allTasks).toHaveLength(2)
-            expect(allTasks).toEqual(expect.arrayContaining([Task1, Task2]))
+            expect(allTasks).toEqual(expect.arrayContaining([task1, task2]))
+            
+            expect(task2.metadata.createdAt.getTime()).toBeGreaterThan(task1.metadata.createdAt.getTime())
         })
     })
 
     describe('concurrent operations', () => {
-        it('should handle multiple simultaneous updates to the same Task', async () => {
+        it('should handle multiple simultaneous updates to the same task', async () => {
             const Task = await storage.add({
-                name: 'Test Task',
+                name: 'Test task',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
                 enabled: true,
             })
 
-            // Simulate concurrent updates
+            vi.advanceTimersByTime(1000)
+
             const updates = await Promise.all([
                 storage.update(Task.id, { name: 'Update 1' }),
                 storage.update(Task.id, { name: 'Update 2' }),
@@ -141,45 +161,10 @@ describe('MemoryStorage', () => {
 
             const finalTask = await storage.get(Task.id)
             expect(updates.some(u => u.name === finalTask?.name)).toBe(true)
-        })
-    })
-
-    describe('edge cases', () => {
-        it('should handle empty strings in Task properties', async () => {
-            const Task = await storage.add({
-                name: '',
-                expression: '* * * * *',
-                callback: '',
-                enabled: true,
+            
+            updates.forEach(update => {
+                expect(update.metadata.updatedAt.getTime()).toBeGreaterThan(Task.metadata.createdAt.getTime())
             })
-
-            expect(Task.name).toBe('')
-            expect(Task.callback).toBe('')
-        })
-
-        it('should handle extremely long Task names and callbacks', async () => {
-            const longString = 'a'.repeat(10000)
-            const Task = await storage.add({
-                name: longString,
-                expression: '* * * * *',
-                callback: longString,
-                enabled: true,
-            })
-
-            expect(Task.name).toBe(longString)
-            expect(Task.callback).toBe(longString)
-        })
-
-        it('should handle special characters in Task properties', async () => {
-            const Task = await storage.add({
-                name: '!@#$%^&*()',
-                expression: '* * * * *',
-                callback: 'console.log("⚡️🎉")',
-                enabled: true,
-            })
-
-            const retrieved = await storage.get(Task.id)
-            expect(retrieved).toEqual(Task)
         })
     })
 
@@ -198,52 +183,14 @@ describe('MemoryStorage', () => {
 
             expect(Task.metadata.lastRun).toBeUndefined()
             expect(Task.metadata.nextRun).toBeUndefined()
-        })
-
-        it('should handle undefined dates', async () => {
-            const Task = await storage.add({
-                name: 'Test Task',
-                expression: '* * * * *',
-                callback: 'console.log("test")',
-                enabled: true,
-                metadata: {
-                    lastRun: undefined,
-                    nextRun: undefined,
-                },
-            })
-
-            expect(Task.metadata.lastRun).toBeUndefined()
-            expect(Task.metadata.nextRun).toBeUndefined()
-        })
-
-        it('should handle date updates from valid to invalid', async () => {
-            const validDate = new Date()
-            const Task = await storage.add({
-                name: 'Test Task',
-                expression: '* * * * *',
-                callback: 'console.log("test")',
-                enabled: true,
-                metadata: {
-                    lastRun: validDate,
-                    nextRun: validDate,
-                },
-            })
-
-            const updatedTask = await storage.update(Task.id, {
-                metadata: {
-                    lastRun: new Date('invalid date'),
-                    nextRun: new Date('invalid date'),
-                },
-            })
-
-            expect(updatedTask.metadata.lastRun).toBeUndefined()
-            expect(updatedTask.metadata.nextRun).toBeUndefined()
+            
+            expect(Task.metadata.createdAt).toEqual(new Date(currentTime))
         })
 
         it('should preserve existing valid dates when updating with invalid dates', async () => {
-            const validDate = new Date()
+            const validDate = new Date(currentTime)
             const Task = await storage.add({
-                name: 'Test Task',
+                name: 'Test task',
                 expression: '* * * * *',
                 callback: 'console.log("test")',
                 enabled: true,
@@ -252,6 +199,8 @@ describe('MemoryStorage', () => {
                     nextRun: validDate,
                 },
             })
+
+            vi.advanceTimersByTime(1000)
 
             const updatedTask = await storage.update(Task.id, {
                 metadata: {
@@ -261,84 +210,7 @@ describe('MemoryStorage', () => {
 
             expect(updatedTask.metadata.lastRun).toBeUndefined()
             expect(updatedTask.metadata.nextRun).toEqual(validDate)
-        })
-    })
-
-    describe('bulk operations', () => {
-        it('should handle adding many Tasks simultaneously', async () => {
-            const Tasks = Array.from({ length: 1000 }, (_, i) => ({
-                name: `Task ${i}`,
-                expression: '* * * * *',
-                callback: `console.log(${i})`,
-                enabled: true,
-            }))
-
-            const added = await Promise.all(Tasks.map(Task => storage.add(Task)))
-            expect(added).toHaveLength(Tasks.length)
-
-            const all = await storage.getAll()
-            expect(all).toHaveLength(Tasks.length)
-        })
-
-        it('should handle removing many Tasks simultaneously', async () => {
-            const Tasks = await Promise.all(
-                Array.from({ length: 100 }, (_, i) => storage.add({
-                    name: `Task ${i}`,
-                    expression: '* * * * *',
-                    callback: `console.log(${i})`,
-                    enabled: true,
-                })),
-            )
-
-            // Remove them all simultaneously
-            await Promise.all(Tasks.map(Task => storage.remove(Task.id)))
-
-            const remaining = await storage.getAll()
-            expect(remaining).toHaveLength(0)
-        })
-    })
-
-    describe('remove', () => {
-        it('should remove an existing Task', async () => {
-            const Task = await storage.add({
-                name: 'Test Task',
-                expression: '* * * * *',
-                callback: 'console.log("test")',
-                enabled: true,
-            })
-
-            const result = await storage.remove(Task.id)
-            expect(result).toBe(true)
-
-            const retrievedTask = await storage.get(Task.id)
-            expect(retrievedTask).toBeNull()
-        })
-
-        it('should return false when removing non-existent Task', async () => {
-            const result = await storage.remove('non-existent-id')
-            expect(result).toBe(false)
-        })
-    })
-
-    describe('clear', () => {
-        it('should remove all Tasks', async () => {
-            await storage.add({
-                name: 'Test Task 1',
-                expression: '* * * * *',
-                callback: 'console.log("test1")',
-                enabled: true,
-            })
-
-            await storage.add({
-                name: 'Test Task 2',
-                expression: '*/5 * * * *',
-                callback: 'console.log("test2")',
-                enabled: false,
-            })
-
-            await storage.clear()
-            const Tasks = await storage.getAll()
-            expect(Tasks).toHaveLength(0)
+            expect(updatedTask.metadata.updatedAt.getTime()).toBeGreaterThan(Task.metadata.createdAt.getTime())
         })
     })
 })

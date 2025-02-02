@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { DateTime } from 'luxon'
 
-import TimezoneUtils from './../../src/runtime/utils/timezone'
+import TimezoneUtils from '../../src/runtime/utils/timezone'
 
 
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import TaskValidator from '../../../src/runtime/utils/task/validator'
-import type { CronTask } from '../../../src/runtime/types/task'
+import TaskValidator from '../../../src/runtime/task/validator'
+import type { CronTask } from '../../../src/runtime/task/types'
 
 
 

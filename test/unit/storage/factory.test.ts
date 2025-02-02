@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
     type StorageConfig,
     createServerStorage,
-    createBrowserStorage
-} from './../../../src/runtime/utils/storage'
+    createClientStorage
+} from '../../../src/runtime/storage'
 
 
 
@@ -58,7 +58,7 @@ const createTestTask = () => ({
 })
 
 // Mock the memory storage module
-vi.mock('../../../src/runtime/utils/storage/environments/memory', () => ({
+vi.mock('../../../src/runtime/storage/environments/memory', () => ({
     createMemoryStorage: vi.fn(() => Promise.resolve({
         type: 'memory' as const,
         init: vi.fn(),
@@ -70,7 +70,7 @@ vi.mock('../../../src/runtime/utils/storage/environments/memory', () => ({
 }))
 
 // Mock the redis storage module
-vi.mock('../../../src/runtime/utils/storage/environments/redis', () => ({
+vi.mock('../../../src/runtime/storage/environments/redis', () => ({
     createRedisStorage: vi.fn(config => Promise.resolve({
         type: 'redis' as const,
         config,
@@ -129,7 +129,7 @@ describe('Storage Factory', () => {
     describe('Browser Storage Factory', () => {
         it('should create memory storage', async () => {
             const config: StorageConfig = { type: 'memory' }
-            const storage = await createBrowserStorage(config)
+            const storage = await createClientStorage(config)
             expect(storage).toHaveProperty('type', 'memory')
         })
 
@@ -139,7 +139,7 @@ describe('Storage Factory', () => {
                 config: { prefix: 'test:' },
             }
 
-            const storage = await createBrowserStorage(config)
+            const storage = await createClientStorage(config)
             expect(storage).toBeDefined()
 
             const testTask = createTestTask()
@@ -165,7 +165,7 @@ describe('Storage Factory', () => {
                 config: { prefix: 'test:' },
             }
 
-            const storage = await createBrowserStorage(config)
+            const storage = await createClientStorage(config)
             expect(storage).toBeDefined()
 
             const testTask = createTestTask()
@@ -194,7 +194,7 @@ describe('Storage Factory', () => {
             }
 
             await expect(async () => {
-                await createBrowserStorage(redisConfig)
+                await createClientStorage(redisConfig)
             }).rejects.toThrow('Storage type redis is not supported in browser environment')
         })
     })
@@ -205,7 +205,7 @@ describe('Storage Factory', () => {
                 type: 'localStorage',
             }
 
-            const storage = await createBrowserStorage(config)
+            const storage = await createClientStorage(config)
             expect(storage).toBeDefined()
 
             const testTask = createTestTask()

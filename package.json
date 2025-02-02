@@ -1,5 +1,5 @@
 {
-  "name": "my-module",
+  "name": "nuxt-cron",
   "version": "1.0.0",
   "description": "My new Nuxt module",
   "repository": "your-org/my-module",
@@ -10,6 +10,13 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/module.mjs",
       "require": "./dist/module.cjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "*": [
+        "./dist/types.d.ts"
+      ]
     }
   },
   "main": "./dist/module.cjs",
@@ -44,9 +51,12 @@
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/luxon": "^3.4.2",
     "@types/node": "latest",
+    "@vue/test-utils": "^2.4.6",
     "changelogen": "^0.5.7",
     "eslint": "^9.19.0",
+    "happy-dom": "^16.8.1",
     "nuxt": "^3.15.3",
+    "playwright-core": "^1.50.1",
     "rollup": "^4.32.1",
     "tslib": "^2.8.1",
     "typescript": "~5.7.3",

@@ -1,16 +1,13 @@
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitest/config'
+import { defineVitestConfig } from '@nuxt/test-utils/config'
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-    include: ['test/**/*.test.ts'],
-    exclude: ['node_modules/**/*', 'playground/**/*'],
-  },
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+
+
+export default defineVitestConfig({
+    test: {
+        globals: true,
+        environment: 'node',
+        include: ['test/**/*.test.ts'],
+        exclude: ['node_modules/**/*', 'playground/**/*'],
     },
-  },
 })

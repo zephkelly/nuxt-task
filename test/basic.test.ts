@@ -13,4 +13,15 @@ describe('ssr', async () => {
         const html = await $fetch('/')
         expect(html).toContain('<div>basic</div>')
     })
+
+    it('should have a working API endpoint', async () => {
+        const response = await $fetch('/api/test')
+
+        console.log(response)
+        
+        expect(response).toEqual({
+            status: 200,
+            message: 'API is working'
+        })
+    })
 })

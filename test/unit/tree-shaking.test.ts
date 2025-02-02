@@ -60,17 +60,17 @@ describe('Tree Shaking Tests', () => {
 
     it('should not include Redis code in browser bundle', async () => {
         const browserTestCode = `
-            import { createBrowserStorage } from './../../../src/runtime/utils/storage';
+            import { createClientStorage } from './../../../src/runtime/storage';
             
             export async function initStorage() {
-                return createBrowserStorage({ 
+                return createClientStorage({ 
                     type: 'localStorage',
                     config: { prefix: 'test:' }
                 });
             }
         `
 
-        const testFilePath = path.resolve(testTempDir, 'browser-test.ts')
+        const testFilePath = path.resolve(testTempDir, 'client-test.ts')
         fs.writeFileSync(testFilePath, browserTestCode)
 
         try {
@@ -78,7 +78,7 @@ describe('Tree Shaking Tests', () => {
             expect(bundleContent).not.toContain('redis')
             expect(bundleContent).not.toContain('createRedisStorage')
             expect(bundleContent).toContain('localStorage')
-            expect(bundleContent).toContain('BrowserBaseStorage')
+            expect(bundleContent).toContain('ClientBaseStorage')
         }
         finally {
             if (fs.existsSync(testFilePath)) {
@@ -89,7 +89,7 @@ describe('Tree Shaking Tests', () => {
 
     it('should not include browser storage code in server bundle', async () => {
         const serverTestCode = `
-            import { createRedisStorage } from './../../../src/runtime/utils/storage/environments';
+            import { createRedisStorage } from './../../../src/runtime/storage/environments';
             
             export async function initStorage() {
                 return createRedisStorage({ 
@@ -119,7 +119,7 @@ describe('Tree Shaking Tests', () => {
 
     it('should include only memory storage when specified', async () => {
         const memoryTestCode = `
-            import { createMemoryStorage } from './../../../src/runtime/utils/storage/environments';
+            import { createMemoryStorage } from './../../../src/runtime/storage/environments';
             
             export async function initStorage() {
                 return createMemoryStorage();

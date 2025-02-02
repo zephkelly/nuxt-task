@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
-import { Scheduler } from '../../../src/runtime/utils/task/scheduler'
-import { MemoryStorage } from '../../../src/runtime/utils/storage'
-import type { CronTask, CronTaskEvent } from '../../../src/runtime/types/task'
+import { Scheduler } from '../../../src/runtime/scheduler'
+import { MemoryStorage } from '../../../src/runtime/storage'
+import type { CronTask, CronTaskEvent } from '../../../src/runtime/task/types'
 import type { ModuleOptions } from '../../../src/module'
-import { getModuleOptions, setModuleOptions, resetModuleOptions } from '../../../src/runtime/utils/config'
+import { getModuleOptions, setModuleOptions, resetModuleOptions } from '../../../src/runtime/config'
 
 import type { FlexibleTimezoneOptions, StrictTimezoneOptions } from '../../../src/runtime/utils/timezone'
-import type { SchedulerBaseOptions } from '../../../src/runtime/utils/task/scheduler/types'
+import type { SchedulerBaseOptions } from '../../../src/runtime/scheduler/types'
 
 
 
@@ -63,7 +63,7 @@ describe('Scheduler', () => {
 
         scheduler = new Scheduler(
             storage,
-            getModuleOptions(),
+            getModuleOptions() as ModuleOptions,
             {
                 tickInterval: 100,
                 maxConcurrent: 2,
