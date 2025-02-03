@@ -1,4 +1,4 @@
-import { DateTime } from 'luxon'
+
 import TimezoneUtils from '../utils/timezone'
 
 import { EventEmitter } from 'node:events'
@@ -13,8 +13,8 @@ import CronExpressionParser from '../expression/parser'
 import type { SchedulerOptions, SchedulerStats, SchedulerBaseOptions } from './types'
 import { TaskQueue } from './queue'
 
-import { getModuleOptions } from './../config'
 import { type ModuleOptions } from '../../module'
+import { getModuleOptions } from '../config'
 
 
 
@@ -182,7 +182,7 @@ export class Scheduler extends EventEmitter {
                 },
             }
 
-            const moduleOptions = getModuleOptions()
+            const moduleOptions: ModuleOptions = getModuleOptions();
 
             CronExpressionParser.parseCronExpression(newTask.options.expression, {
                 timezone: {
@@ -268,7 +268,7 @@ export class Scheduler extends EventEmitter {
                 ? this.options.timezone.type
                 : (task.options.timezone || this.options.timezone?.type || 'UTC')
 
-            const moduleOptions = getModuleOptions()
+            const moduleOptions: ModuleOptions = getModuleOptions();
 
             const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
                 timezone: {
@@ -390,7 +390,7 @@ export class Scheduler extends EventEmitter {
                     ? this.options.timezone.type
                     : (task.options.timezone || this.options.timezone?.type || 'UTC')
 
-                const moduleOptions = getModuleOptions()
+                const moduleOptions: ModuleOptions = getModuleOptions();
 
                 const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
                     timezone: {

@@ -49,8 +49,8 @@ describe('Scheduler', () => {
         moduleOpts: Partial<ModuleOptions> = {},
         baseOptions: SchedulerBaseOptions = {},
     ) => {
-        resetModuleOptions()
-        setModuleOptions(moduleOpts as ModuleOptions)
+        // resetModuleOptions()
+        // setModuleOptions(moduleOpts as ModuleOptions)
 
         storage = new MemoryStorage()
         await storage.init()
@@ -63,7 +63,7 @@ describe('Scheduler', () => {
 
         scheduler = new Scheduler(
             storage,
-            getModuleOptions() as ModuleOptions,
+            moduleOpts as ModuleOptions,
             {
                 tickInterval: 100,
                 maxConcurrent: 2,
@@ -93,9 +93,10 @@ describe('Scheduler', () => {
     describe('timezone handling', () => {
         describe('strict mode', () => {
             beforeEach(async () => {
-                await setupScheduler(createStrictOptions({
+                const options = createStrictOptions({
                     type: 'UTC',
-                }))
+                })
+                await setupScheduler(options)
             })
 
             it('should reject tasks with custom timezones in strict mode', async () => {

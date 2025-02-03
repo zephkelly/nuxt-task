@@ -1,6 +1,8 @@
 import TimezoneUtils, { type FlexibleTimezoneOptions, type StrictTimezoneOptions } from '../utils/timezone'
 
-import { getModuleOptions } from './../config'
+import { useRuntimeConfig } from '#imports'
+import { type ModuleOptions } from './../../module'
+import { getModuleOptions } from '../config'
 
 import {
     CRON_RANGES,
@@ -20,7 +22,8 @@ export class CronExpressionParser {
         expression: string,
         options: CronExpressionOptions = {}
     ): ParsedExpression {
-        const moduleOptions = getModuleOptions()
+        const moduleOptions: ModuleOptions = getModuleOptions();
+
         const timezone = options.timezone ?? moduleOptions.timezone
 
         const shouldValidateTimezone = timezone.validate ?? moduleOptions.timezone.validate

@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon'
 
-import { getModuleOptions } from './../config'
+import { useRuntimeConfig } from '#imports'
+import { type ModuleOptions } from './../../module'
 
 
 
@@ -187,7 +188,7 @@ class TimezoneUtils {
             return false
         }
 
-        const moduleOptions = getModuleOptions()
+        const moduleOptions: ModuleOptions = useRuntimeConfig().public.cron as ModuleOptions
         if (!moduleOptions.timezone.strict) {
             return true
         }

@@ -1,8 +1,7 @@
 import type { CronTaskOptions, CronTask } from '../../task/types'
 import CronExpressionParser from '../../expression/parser'
 
-import { defaultModuleOptions, getModuleOptions } from './../../config'
-import { useRuntimeConfig } from '#imports'
+import { getModuleOptions } from '../../config'
 import type { ModuleOptions } from './../../../module'
 
 
@@ -32,8 +31,7 @@ export function defineTaskHandler<T = any>(definition: NuxtCronTaskDefinition<T>
             description: definition.meta.description,
         },
         async run({ payload, context }: { payload?: Record<string, any>, context?: Record<string, any> }) {
-            // Get runtime config at execution time, not definition time
-            const moduleOptions: ModuleOptions = useRuntimeConfig().public.cron as ModuleOptions
+            const moduleOptions: ModuleOptions = getModuleOptions();
 
             // Verify experimental tasks are enabled
             if (!moduleOptions.experimental?.tasks) {

@@ -1,55 +1,86 @@
 import { defu } from 'defu'
 import { type ModuleOptions } from "./../module"
 
+class ModuleConfigurationManager {
+    private static instance: ModuleConfigurationManager;
+    private moduleOptions: ModuleOptions;
 
+    private readonly defaultModuleOptions: ModuleOptions = {
+        serverTasks: true,
+        clientTasks: false,
+        experimental: {
+            tasks: false
+        },
+        storage: {
+            type: 'memory',
+        },
+        timezone: {
+            type: 'UTC',
+            validate: true,
+            strict: false,
+        },
+    } as const satisfies ModuleOptions;
 
-export const defaultModuleOptions: ModuleOptions = {
-    serverTasks: true,
-    clientTasks: false,
-    experimental: {
-        tasks: false
-    },
-    storage: {
-        type: 'memory',
-    },
-    timezone: {
-        type: 'UTC',
-        validate: true,
-        strict: false,
-    },
-} as const satisfies ModuleOptions
-
-let moduleOptions: ModuleOptions = defaultModuleOptions
-
-export function setModuleOptions(options: ModuleOptions) {
-    moduleOptions = defu(options, defaultModuleOptions) as ModuleOptions
-}
-
-export function getModuleOptions(): ModuleOptions {
-    return moduleOptions
-}
-
-export function resetModuleOptions() {
-    moduleOptions = defaultModuleOptions
-}
-
-export function updateModuleOptions(options: Partial<ModuleOptions>) {
-    moduleOptions = defu(options, moduleOptions) as ModuleOptions
-}
-
-
-export function validateModuleOptions(options: ModuleOptions): boolean {
-    if (!options.timezone?.type) {
-        return false
+    private constructor() {
+        this.moduleOptions = this.defaultModuleOptions;
     }
 
-    if (options.timezone.strict && options.timezone.type !== moduleOptions.timezone.type) {
-        return false
+    public static getInstance(): ModuleConfigurationManager {
+        if (!ModuleConfigurationManager.instance) {
+            ModuleConfigurationManager.instance = new ModuleConfigurationManager();
+        }
+        return ModuleConfigurationManager.instance;
     }
 
-    if (options.experimental?.tasks && !options.serverTasks) {
-        return false
+    public setModuleOptions(options: ModuleOptions): void {
+        this.moduleOptions = defu(options, this.defaultModuleOptions) as ModuleOptions;
     }
 
-    return true
+    public getModuleOptions(): ModuleOptions {
+        try {
+            const runtimeConfig = useRuntimeConfig().public.cron as ModuleOptions;
+            return runtimeConfig ?? this.moduleOptions;
+        } catch (error: unknown) {
+            return this.moduleOptions;
+        }
+    }
+
+    public resetModuleOptions(): void {
+        this.moduleOptions = this.defaultModuleOptions;
+    }
+
+    public updateModuleOptions(options: Partial<ModuleOptions>): void {
+        this.moduleOptions = defu(options, this.moduleOptions) as ModuleOptions;
+    }
+
+    public validateModuleOptions(options: ModuleOptions): boolean {
+        if (!options.timezone?.type) {
+            return false;
+        }
+        if (options.timezone.strict && options.timezone.type !== this.moduleOptions.timezone.type) {
+            return false;
+        }
+        if (options.experimental?.tasks && !options.serverTasks) {
+            return false;
+        }
+        return true;
+    }
+
+    public getDefaultModuleOptions(): ModuleOptions {
+        return this.defaultModuleOptions;
+    }
 }
+
+// Export a single instance
+export const moduleConfig = ModuleConfigurationManager.getInstance();
+
+// Export convenience methods that use the singleton instance
+export const setModuleOptions = (options: ModuleOptions) => moduleConfig.setModuleOptions(options);
+export const getModuleOptions = () => moduleConfig.getModuleOptions();
+export const resetModuleOptions = () => moduleConfig.resetModuleOptions();
+export const updateModuleOptions = (options: Partial<ModuleOptions>) => moduleConfig.updateModuleOptions(options);
+export const validateModuleOptions = (options: ModuleOptions) => moduleConfig.validateModuleOptions(options);
+export const getDefaultModuleOptions = () => moduleConfig.getDefaultModuleOptions();
+
+// Export the default options as a constant for reference
+export const defaultModuleOptions = ModuleConfigurationManager.getInstance().getDefaultModuleOptions();
