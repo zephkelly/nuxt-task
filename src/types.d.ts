@@ -21,17 +21,12 @@ declare module '@nuxt/schema' {
     interface NuxtOptions {
         cron?: ModuleOptions
         runtimeConfig: {
-            public: {
-                cron: ModuleOptions
-            }
+            cron: ModuleOptions
         }
     }
 
     interface RuntimeConfig {
         cron: ModuleOptions
-        public: {
-            cron: ModuleOptions
-        }
     }
 }
 
@@ -39,24 +34,20 @@ declare module 'nuxt/schema' {
     interface NuxtConfig {
         cron?: ModuleOptions
         runtimeConfig: {
-            public: {
-                cron: ModuleOptions
-            }
+            cron: ModuleOptions
         }
     }
 
     interface NuxtOptions {
         cron?: ModuleOptions
         runtimeConfig: {
-            public: {
-                cron: ModuleOptions
-            }
+            cron: ModuleOptions
         }
     }
 
     interface RuntimeConfig {
-        public: {
-            cron: ModuleOptions
-        }
+        cron: ModuleOptions
     }
 }
+
+export {}

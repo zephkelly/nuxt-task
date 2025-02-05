@@ -9,9 +9,10 @@ import type { StorageType } from './runtime/storage'
 
 import type { FlexibleTimezoneOptions, StrictTimezoneOptions } from './runtime/utils/timezone'
 
-import { moduleConfig } from './runtime/config'
-
 import { scanTasksDirectory } from './runtime/server/nitro/utils/scanTasks'
+import type { Nuxt } from 'nuxt/schema'
+
+import { moduleConfiguration, DEFAULT_MODULE_OPTIONS } from './runtime/config'
 
 
 
@@ -27,13 +28,9 @@ export interface BaseModuleOptions {
     }
 }
 
-
-// Type used for external configuration
 export type ModuleOptions = BaseModuleOptions & {
     timezone: FlexibleTimezoneOptions | StrictTimezoneOptions
 }
-
-
 
 export default defineNuxtModule<ModuleOptions>({
     meta: {
@@ -43,21 +40,21 @@ export default defineNuxtModule<ModuleOptions>({
             nuxt: '^3.10.0 || ^4.0.0',
         },
     },
-    defaults: moduleConfig.getDefaultModuleOptions(),
+    defaults: DEFAULT_MODULE_OPTIONS,
     async setup(moduleOptions, nuxt) {
         const { resolve } = createResolver(import.meta.url)
         const runtimeDir = resolve('./runtime')
 
-        moduleConfig.setModuleOptions(moduleOptions)
-        
-        // Add module aliases
+        nuxt.options.runtimeConfig.cron = moduleOptions
+        moduleConfiguration.setModuleOptions(moduleOptions)
+
         nuxt.options.alias['#nuxt-cron'] = runtimeDir
 
         addImports([
             {
               name: 'defineTaskHandler',
               as: 'defineTaskHandler',
-              from: resolve(join(runtimeDir, 'server/nitro/handler')), // Adjust path based on your structure
+              from: resolve(join(runtimeDir, 'server/nitro/handler')),
               priority: 20
             }
         ])
@@ -84,19 +81,10 @@ export default defineNuxtModule<ModuleOptions>({
         nuxt.options.build.transpile = nuxt.options.build.transpile || []
         nuxt.options.build.transpile.push(...runtimeDirs)
         
-        // // Ensure options are properly merged
-        // const options = defu(moduleOptions, defaultModuleOptions) as ModuleOptions
-    
-        // // Setup runtime config
-        // nuxt.options.runtimeConfig.public = nuxt.options.runtimeConfig.public || {}
 
-        // //@ts-expect-error
-        // nuxt.options.runtimeConfig.public.cron = options
-    
     
         // Ensure consistent options across Nitro
         await nuxt.hook('nitro:config', async (nitroConfig) => {
-            console.log('hello')
           nitroConfig.alias = nitroConfig.alias || {}
           nitroConfig.alias['#nuxt-cron'] = runtimeDir
     
@@ -104,11 +92,6 @@ export default defineNuxtModule<ModuleOptions>({
           nitroConfig.virtual = nitroConfig.virtual || {}
           nitroConfig.virtual['#nuxt-cron/types'] = `export * from '${resolve('./runtime/types')}'`
           nitroConfig.virtual['#cron-config'] = `export default ${JSON.stringify(moduleOptions)}`
-          
-          // Ensure runtime config is consistent
-          nitroConfig.runtimeConfig = nitroConfig.runtimeConfig || {}
-          nitroConfig.runtimeConfig.public = nitroConfig.runtimeConfig.public || {}
-          nitroConfig.runtimeConfig.public.cron = moduleOptions
     
           // Explicitly set experimental tasks in Nitro config
           if (moduleOptions.experimental?.tasks) {
@@ -134,44 +117,32 @@ export async function configureNitroTasks(
 ) {
     if (!options.experimental?.tasks) return
 
-    // Initialize Nitro configuration with empty objects if undefined
     nitroConfig.tasks = nitroConfig.tasks || {}
     nitroConfig.scheduledTasks = nitroConfig.scheduledTasks || []
     nitroConfig.handlers = nitroConfig.handlers || {}
 
     try {
-        // Use the Nuxt app's server/tasks directory
         const tasksDir = join(nuxt.options.serverDir, 'tasks')
 
-        // Check if directory exists before proceeding
         try {
             await access(tasksDir, constants.R_OK)
-        } catch (error) {
+        }
+        catch (error) {
             console.warn('No tasks directory found at:', tasksDir)
-            // Initialize empty tasks object even if directory doesn't exist
             nitroConfig.tasks = {}
             return
         }
 
         const tasks = await scanTasksDirectory(tasksDir)
 
-        console.log('Found tasks:', tasks)
-        
-        // Group tasks by cron expression for scheduled tasks
         const scheduledTasksMap = new Map<string, string[]>()
         
         for (const task of tasks) {
             try {
-                // Get the relative path from the tasks directory
                 const relativePath = task.path.substring(tasksDir.length + 1)
-                // Convert the path to the module import path format
                 const modulePath = relativePath.replace(/\.[^/.]+$/, '') // Remove extension
-                console.log('modulePath:', modulePath)
-                console.log('task.path:', task.path)
                 const taskModule = await import(task.path)
-                console.log(`Registered task`, taskModule)
                 if (taskModule?.default?.meta) {
-                    // Register task metadata
                     nitroConfig.tasks[task.name] = {
                         name: task.name,
                         description: taskModule.default.meta.description || '',
@@ -193,8 +164,9 @@ export async function configureNitroTasks(
                     }
 
                 }
-            } catch (error) {
-                console.warn(`Failed to load task ${task.name}:`, error)
+            }
+            catch (error) {
+                console.warn(`Failed to load task ${task.name}.`)
             }
         }
 
@@ -203,25 +175,18 @@ export async function configureNitroTasks(
             ([cron, tasks]) => ({ cron, tasks })
         )
 
-        console.log('Scheduled tasks:', nitroConfig.scheduledTasks)
-
         // Register the tasks list endpoint
         nitroConfig.handlers['/_nitro/tasks'] = {
             method: 'get',
-            handler: createTaskListHandler(nitroConfig)
+            handler: {
+                tasks: nitroConfig.tasks || {},
+                scheduledTasks: nitroConfig.scheduledTasks || []
+            }
         }
 
-    } catch (error) {
+    }
+    catch (error) {
         console.warn('Error configuring Nitro tasks:', error)
-        // Initialize empty tasks object even if there's an error
         nitroConfig.tasks = {}
     }
-}
-
-// Make sure createTaskListHandler returns a proper response
-function createTaskListHandler(nitroConfig: any) {
-    return () => ({
-        tasks: nitroConfig.tasks || {},
-        scheduledTasks: nitroConfig.scheduledTasks || []
-    })
 }

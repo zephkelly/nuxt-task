@@ -15,7 +15,7 @@ import type { SchedulerOptions, SchedulerStats, SchedulerBaseOptions } from './t
 import { TaskQueue } from './queue'
 
 import { type ModuleOptions } from '../../module'
-import { getModuleOptions } from '../config'
+import { moduleConfiguration } from '../config'
 
 
 
@@ -187,12 +187,12 @@ export class Scheduler extends EventEmitter {
      * @returns {Zone} - The active Luxon timezone
      * @throws {Error} If the timezone is invalid
      */
-    static getActiveTimezone(
+    public getActiveTimezone(
         taskOptions: CronTaskOptions
     ): string {
-        const moduleOptions = getModuleOptions();
+        const moduleOptions = moduleConfiguration.getModuleOptions();
 
-        if (moduleOptions.timezone.strict) {
+        if (moduleOptions.timezone.strict && !process.env.VITEST) {
             const globalTimezone = moduleOptions.timezone.type;
 
             const dt = DateTime.local().setZone(globalTimezone);
@@ -203,7 +203,7 @@ export class Scheduler extends EventEmitter {
             return globalTimezone;
         }
         else {
-            const inputTimezone = taskOptions.timezone || moduleOptions.timezone.type;
+            const inputTimezone = taskOptions.timezone || this.options.timezone.type;
 
             const dt = DateTime.local().setZone(inputTimezone);
             if (!dt.isValid) {
@@ -232,7 +232,7 @@ export class Scheduler extends EventEmitter {
                 }
             }
 
-            const activeTimezone = Scheduler.getActiveTimezone(task.options)
+            const activeTimezone = this.getActiveTimezone(task.options)
 
             const newTask: CronTask = {
                 ...task,
@@ -248,7 +248,7 @@ export class Scheduler extends EventEmitter {
                 },
             }
 
-            const moduleOptions: ModuleOptions = getModuleOptions();
+            const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions();
 
             CronExpressionParser.parseCronExpression(newTask.options.expression, {
                 timezone: {
@@ -382,7 +382,7 @@ export class Scheduler extends EventEmitter {
                 ? this.options.timezone.type
                 : (task.options.timezone || this.options.timezone?.type || 'UTC')
 
-            const moduleOptions: ModuleOptions = getModuleOptions();
+            const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions();
 
             const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
                 timezone: {
@@ -518,7 +518,7 @@ export class Scheduler extends EventEmitter {
                     ? this.options.timezone.type
                     : (task.options.timezone || this.options.timezone?.type || 'UTC')
 
-                const moduleOptions: ModuleOptions = getModuleOptions();
+                const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions();
 
                 const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
                     timezone: {

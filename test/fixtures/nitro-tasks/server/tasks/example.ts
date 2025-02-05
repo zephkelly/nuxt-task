@@ -14,6 +14,6 @@ export default defineTaskHandler({
         retryDelay: 1000,
     },
     async handler({ payload }) {
-        return { executed: true, timestamp: Date.now() }
+        return { success: true }
     }
 })

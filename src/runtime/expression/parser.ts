@@ -1,8 +1,4 @@
-import TimezoneUtils, { type FlexibleTimezoneOptions, type StrictTimezoneOptions } from '../utils/timezone'
-
-import { useRuntimeConfig } from '#imports'
-import { type ModuleOptions } from './../../module'
-import { getModuleOptions } from '../config'
+import TimezoneUtils from '../utils/timezone'
 
 import {
     CRON_RANGES,
@@ -11,6 +7,9 @@ import {
     type ParsedExpression,
     CronExpressionParseError,
 } from './types'
+import type { ModuleOptions } from 'nuxt/schema'
+
+import { moduleConfiguration } from '../config'
 
 
 
@@ -20,14 +19,16 @@ type RangeDefinition = { min: number, max: number }
 export class CronExpressionParser {
     public parseCronExpression(
         expression: string,
-        options: CronExpressionOptions = {}
+        options: CronExpressionOptions = {},
+        moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions()
     ): ParsedExpression {
-        const moduleOptions: ModuleOptions = getModuleOptions();
+        if (!moduleOptions) {
+            throw new Error('Module options not found')
+        }
 
         const timezone = options.timezone ?? moduleOptions.timezone
 
-        // const shouldValidateTimezone = timezone.validate ?? moduleOptions.timezone.validate
-        const shouldValidateTimezone = false
+        const shouldValidateTimezone = timezone.validate ?? moduleOptions.timezone.validate
         const isStrictMode = timezone.strict ?? moduleOptions.timezone.strict
 
         if (shouldValidateTimezone) {
@@ -178,6 +179,5 @@ export class CronExpressionParser {
         }
     }
 }
-
 
 export default new CronExpressionParser()

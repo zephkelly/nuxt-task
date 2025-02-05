@@ -21,5 +21,10 @@ export default defineNuxtConfig({
     modules: [
         nuxtCron,
     ],
-    cron: cronConfig
+    cron: cronConfig,
+    nitro: {
+        experimental: {
+            tasks: true
+        }
+    },
 })

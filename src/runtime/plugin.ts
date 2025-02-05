@@ -1,10 +1,6 @@
-import { defineNuxtPlugin, useRuntimeConfig } from '#app'
-import { setModuleOptions } from './config'
-import { type ModuleOptions } from '../module'
+import { defineNuxtPlugin } from '#app'
 
 
 
 export default defineNuxtPlugin((nuxtApp: any) => {
-    const config = useRuntimeConfig()
-    const cronConfig = config.public
 })

@@ -7,11 +7,6 @@ export default defineNuxtConfig({
             tasks: true
         }
     },
-    nitro: {
-        experimental: {
-            tasks: true
-        }
-    },
     debug: true,
     typescript: {
         strict: true,

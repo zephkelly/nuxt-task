@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
+import { defu } from 'defu'
+
 import { Scheduler } from '../../../src/runtime/scheduler'
 import { MemoryStorage } from '../../../src/runtime/storage'
 import type { CronTask, CronTaskEvent } from '../../../src/runtime/task/types'
 import type { ModuleOptions } from '../../../src/module'
-import { getModuleOptions, setModuleOptions, resetModuleOptions } from '../../../src/runtime/config'
+import { moduleConfiguration } from '../../../src/runtime/config'
 
 import type { FlexibleTimezoneOptions, StrictTimezoneOptions } from '../../../src/runtime/utils/timezone'
 import type { SchedulerBaseOptions } from '../../../src/runtime/scheduler/types'
@@ -47,11 +49,7 @@ describe('Scheduler', () => {
 
     const setupScheduler = async (
         moduleOpts: ModuleOptions,
-        baseOptions: SchedulerBaseOptions = {},
     ) => {
-        // resetModuleOptions()
-        setModuleOptions(moduleOpts)
-
         storage = new MemoryStorage()
         await storage.init()
         await storage.clear()
@@ -63,18 +61,15 @@ describe('Scheduler', () => {
 
         scheduler = new Scheduler(
             storage,
-            getModuleOptions(),
+            moduleOpts,
             {
                 tickInterval: 100,
                 maxConcurrent: 2,
-                ...baseOptions,
             },
         )
-    }
 
-    beforeEach(async () => {
-        resetModuleOptions()
-    })
+        return scheduler
+    }
 
     afterEach(async () => {
         if (scheduler) {
@@ -87,7 +82,6 @@ describe('Scheduler', () => {
 
         vi.clearAllMocks()
         vi.restoreAllMocks()
-        resetModuleOptions()
     })
 
     describe('timezone handling', () => {
@@ -244,7 +238,7 @@ describe('Scheduler', () => {
                 vi.spyOn(MemoryStorage.prototype, 'get')
                 vi.spyOn(MemoryStorage.prototype, 'getAll')
 
-                const moduleOptions = getModuleOptions() as ModuleOptions
+                const moduleOptions = moduleConfiguration.getModuleOptions()
 
                 scheduler = new Scheduler(
                     storage,
@@ -422,13 +416,7 @@ describe('Scheduler', () => {
                     type: 'America/New_York',
                 })
 
-                resetModuleOptions();
-
-                setModuleOptions(strictOptions)
-
-                await setupScheduler(getModuleOptions())
-
-
+                await setupScheduler(strictOptions)
             })
 
             it('should use custom default timezone for tasks without timezone', async () => {

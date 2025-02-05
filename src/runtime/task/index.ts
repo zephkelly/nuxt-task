@@ -1,18 +1,16 @@
 import type {
     CronTaskOptions,
-    FlexibleCronTaskOptions,
 } from './types'
 
-import { type FlexibleTimezoneOptions, type StrictTimezoneOptions } from './../utils/timezone';
 import { type ModuleOptions } from './../../module'
-import { getModuleOptions } from '../config'
+import { moduleConfiguration } from '../config'
 
 
 
 export function validateTaskTimezone<T extends ModuleOptions>(
     taskOptions: CronTaskOptions<T>,
 ): void {
-    const moduleOptions: ModuleOptions = getModuleOptions();
+    const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions();
     const isStrictMode = moduleOptions.timezone.strict
     const hasTaskTimezone = 'timezone' in taskOptions
 
