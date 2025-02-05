@@ -4,7 +4,16 @@ export default defineNuxtConfig({
     compatibilityDate: '2025-01-28',
     cron: {
         experimental: {
-            tasks: false
+            tasks: true
         }
+    },
+    nitro: {
+        experimental: {
+            tasks: true
+        }
+    },
+    debug: true,
+    typescript: {
+        strict: true,
     }
 })

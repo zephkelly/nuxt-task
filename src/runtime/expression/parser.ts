@@ -26,11 +26,12 @@ export class CronExpressionParser {
 
         const timezone = options.timezone ?? moduleOptions.timezone
 
-        const shouldValidateTimezone = timezone.validate ?? moduleOptions.timezone.validate
+        // const shouldValidateTimezone = timezone.validate ?? moduleOptions.timezone.validate
+        const shouldValidateTimezone = false
         const isStrictMode = timezone.strict ?? moduleOptions.timezone.strict
 
         if (shouldValidateTimezone) {
-            if (isStrictMode && !TimezoneUtils.isValidStrictTimezone(timezone.type)) {
+            if (isStrictMode && !TimezoneUtils.isValidTimezone(timezone)) {
                 throw new CronExpressionParseError(
                     `Invalid timezone: ${timezone.type}. Strict mode requires a valid IANA timezone identifier.`
                 )

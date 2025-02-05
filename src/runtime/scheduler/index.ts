@@ -1,4 +1,5 @@
 
+import { DateTime, Zone } from 'luxon'
 import TimezoneUtils from '../utils/timezone'
 
 import { EventEmitter } from 'node:events'
@@ -18,6 +19,19 @@ import { getModuleOptions } from '../config'
 
 
 
+/**
+ * @class Scheduler
+ * @extends EventEmitter
+ * @description Main scheduler class that handles cron task execution and management
+ * 
+ * @fires Scheduler#task-started - Emitted when a task starts execution
+ * @fires Scheduler#task-completed - Emitted when a task completes successfully
+ * @fires Scheduler#task-failed - Emitted when a task fails during execution
+ * @fires Scheduler#task-retry - Emitted when a task is being retried
+ * @fires Scheduler#task-paused - Emitted when a task is paused
+ * @fires Scheduler#task-resumed - Emitted when a task is resumed
+ * @fires Scheduler#error - Emitted when an error occurs in the scheduler
+ */
 export class Scheduler extends EventEmitter {
     private readonly options: SchedulerOptions
     private queue: TaskQueue
@@ -40,7 +54,7 @@ export class Scheduler extends EventEmitter {
         baseOptions: SchedulerBaseOptions = {},
     ) {
         super()
-        if (moduleOptions.timezone?.validate && !TimezoneUtils.isValidTimezone(moduleOptions.timezone.type)) {
+        if (moduleOptions.timezone?.validate && !TimezoneUtils.isValidTimezone(moduleOptions.timezone)) {
             throw new Error(`Invalid timezone: ${moduleOptions.timezone.type}`)
         }
 
@@ -89,6 +103,14 @@ export class Scheduler extends EventEmitter {
         })
     }
 
+    /**
+     * Handles and wraps errors with context
+     * 
+     * @private
+     * @param {string} method - The method where the error occurred
+     * @param {unknown} error - The original error
+     * @returns {Error} Wrapped error with context
+     */
     protected handleError(method: string, error: unknown): Error {
         if (error instanceof Error) {
             return new Error(`${method}: ${error.message}`)
@@ -96,6 +118,12 @@ export class Scheduler extends EventEmitter {
         return new Error(`${method}: An unknown error occurred`)
     }
 
+    /**
+     * Starts the scheduler
+     * 
+     * @throws {Error} If the scheduler fails to start
+     * @returns {Promise<void>}
+     */
     async start(): Promise<void> {
         if (this.running) return
 
@@ -118,6 +146,12 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Stops the scheduler
+     * 
+     * @throws {Error} If the scheduler fails to stop
+     * @returns {Promise<void>}
+     */
     async stop(): Promise<void> {
         if (!this.running) return
 
@@ -146,15 +180,47 @@ export class Scheduler extends EventEmitter {
         }
     }
 
-    private getEffectiveTimezone(taskOptions: CronTaskOptions): string {
-        if (this.options.timezone?.strict) {
-            return this.options.timezone.type
+    /**
+     * Get the active timezone for a task
+     * @param {ModuleOptions} moduleOptions - The module options
+     * @param {CronTaskOptions} taskOptions - The task options
+     * @returns {Zone} - The active Luxon timezone
+     * @throws {Error} If the timezone is invalid
+     */
+    static getActiveTimezone(
+        taskOptions: CronTaskOptions
+    ): string {
+        const moduleOptions = getModuleOptions();
+
+        if (moduleOptions.timezone.strict) {
+            const globalTimezone = moduleOptions.timezone.type;
+
+            const dt = DateTime.local().setZone(globalTimezone);
+            if (!dt.isValid) {
+                throw new Error(`Invalid timezone: ${globalTimezone}`);
+            }
+
+            return globalTimezone;
         }
-        return (taskOptions as FlexibleCronTaskOptions).timezone
-            || this.options.timezone?.type
-            || 'UTC'
+        else {
+            const inputTimezone = taskOptions.timezone || moduleOptions.timezone.type;
+
+            const dt = DateTime.local().setZone(inputTimezone);
+            if (!dt.isValid) {
+                throw new Error(`Invalid timezone: ${inputTimezone}`);
+            }
+
+            return inputTimezone;
+        }
     }
 
+    /**
+     * Adds a new task to the scheduler
+     * 
+     * @param {Omit<CronTask, 'id' | 'metadata'>} task - Task configuration without id and metadata
+     * @returns {Promise<CronTask>} The complete task object with generated id and metadata
+     * @throws {Error} If the task addition fails or timezone configuration is invalid
+     */
     async addTask(task: Omit<CronTask, 'id' | 'metadata'>): Promise<CronTask> {
         try {
             if (this.options.timezone?.strict && 'timezone' in task.options) {
@@ -166,14 +232,14 @@ export class Scheduler extends EventEmitter {
                 }
             }
 
-            const effectiveTimezone = this.getEffectiveTimezone(task.options)
+            const activeTimezone = Scheduler.getActiveTimezone(task.options)
 
             const newTask: CronTask = {
                 ...task,
                 id: crypto.randomUUID(),
                 options: {
                     ...task.options,
-                    timezone: effectiveTimezone,
+                    timezone: activeTimezone,
                 },
                 metadata: {
                     runCount: 0,
@@ -187,7 +253,7 @@ export class Scheduler extends EventEmitter {
             CronExpressionParser.parseCronExpression(newTask.options.expression, {
                 timezone: {
                     ...moduleOptions.timezone,
-                    type: effectiveTimezone,
+                    type: activeTimezone,
                 },
                 validateTimezone: this.options.timezone?.validate ?? true,
             })
@@ -206,6 +272,12 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Removes a task from the scheduler
+     * 
+     * @param {TaskId} taskId - The ID of the task to remove
+     * @returns {Promise<void>}
+     */
     async removeTask(taskId: TaskId): Promise<void> {
         const removed = this.queue.remove(taskId)
 
@@ -214,11 +286,23 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Pauses a task
+     * 
+     * @param {TaskId} taskId - The ID of the task to pause
+     * @returns {Promise<void>}
+     */
     async pauseTask(taskId: TaskId): Promise<void> {
         this.queue.pause(taskId)
         await this.persist()
     }
 
+    /**
+     * Resumes a paused task
+     * 
+     * @param {TaskId} taskId - The ID of the task to resume
+     * @returns {Promise<void>}
+     */
     async resumeTask(taskId: TaskId): Promise<void> {
         const task = this.queue.get(taskId)
 
@@ -229,14 +313,30 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Gets a task by ID
+     * 
+     * @param {TaskId} taskId - The ID of the task to retrieve
+     * @returns {CronTask | undefined} The task if found, undefined otherwise
+     */
     getTask(taskId: TaskId): CronTask | undefined {
         return this.queue.get(taskId)
     }
 
+    /**
+     * Gets all tasks in the scheduler
+     * 
+     * @returns {CronTask[]} Array of all tasks
+     */
     getAllTasks(): CronTask[] {
         return this.queue.getAll()
     }
 
+    /**
+     * Gets current scheduler statistics
+     * 
+     * @returns {SchedulerStats} Current scheduler statistics
+     */
     getStats(): SchedulerStats {
         if (this.startTime) {
             this.stats.uptime = Date.now() - this.startTime.getTime()
@@ -245,6 +345,13 @@ export class Scheduler extends EventEmitter {
         return { ...this.stats }
     }
 
+    /**
+     * Waits for a task to complete
+     * 
+     * @private
+     * @param {TaskId} taskId - The ID of the task to wait for
+     * @returns {Promise<void>} Resolves when the task completes or is no longer running
+     */
     private waitForTask(taskId: TaskId): Promise<void> {
         return new Promise((resolve) => {
             const checkCompletion = () => {
@@ -262,6 +369,13 @@ export class Scheduler extends EventEmitter {
         })
     }
 
+    /**
+     * Calculates the next run time for a task
+     * 
+     * @param {CronTask} task - The task to calculate next run time for
+     * @returns {Date} The next scheduled run time
+     * @throws {Error} If the cron expression is invalid
+     */
     public getNextRunTime(task: CronTask): Date {
         try {
             const effectiveTimezone = this.options.timezone?.strict
@@ -286,6 +400,14 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Calculates the next valid run time based on a parsed cron expression
+     * 
+     * @private
+     * @param {ParsedExpression} parsed - The parsed cron expression
+     * @returns {Date} The next valid run time
+     * @throws {Error} If timezone conversion fails
+     */
     private calculateNextRunTime(parsed: ParsedExpression): Date {
         const now = new Date()
 
@@ -368,6 +490,12 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Executes the scheduler tick to check and run due tasks
+     * 
+     * @private
+     * @returns {Promise<void>}
+     */
     private async tick(): Promise<void> {
         if (!this.running) return
 
@@ -435,6 +563,12 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Updates the next run time for a task and persists the change
+     * 
+     * @private
+     * @param {CronTask} task - The task to update
+     */
     private updateNextRunTime(task: CronTask): void {
         task.metadata.nextRun = this.getNextRunTime(task)
 
@@ -444,6 +578,15 @@ export class Scheduler extends EventEmitter {
         })
     }
 
+    /**
+     * Handles tasks that were missed during scheduler downtime
+     * 
+     * @private
+     * @returns {Promise<void>}
+     * @throws {Error} If handling missed tasks fails
+     * @description Executes any tasks that were scheduled to run during downtime
+     * if their catchUp option is enabled
+     */
     private async handleMissedTasks(): Promise<void> {
         try {
             const now = new Date()
@@ -467,6 +610,12 @@ export class Scheduler extends EventEmitter {
         }
     }
 
+    /**
+     * Updates the scheduler's internal statistics
+     * 
+     * @private
+     * @description Updates the count of active and queued tasks
+     */
     private updateStats(): void {
         this.stats.activeTasks = this.queue.getAll().filter(
             task => task.status === 'running',
@@ -480,7 +629,10 @@ export class Scheduler extends EventEmitter {
 
 
     /**
-     * Persist scheduler state to storage
+     * Updates the scheduler's internal statistics
+     * 
+     * @private
+     * @description Updates the count of active and queued tasks
      */
     private async persist(): Promise<void> {
         try {
@@ -504,7 +656,12 @@ export class Scheduler extends EventEmitter {
     }
 
     /**
-     * Restore scheduler state from storage
+     * Restores scheduler state from storage
+     * 
+     * @private
+     * @returns {Promise<void>}
+     * @throws {Error} If restoration fails
+     * @description Loads all tasks from storage and adds them to the queue
      */
     private async restore(): Promise<void> {
         try {
@@ -517,4 +674,18 @@ export class Scheduler extends EventEmitter {
             throw wrappedError
         }
     }
+}
+
+export type {
+    CronTask,
+    CronTaskEvent,
+    TaskId,
+    CronTaskOptions,
+    FlexibleCronTaskOptions,
+    CronStorage,
+    ParsedExpression,
+    SchedulerOptions,
+    SchedulerStats,
+    SchedulerBaseOptions,
+    ModuleOptions
 }

@@ -1,4 +1,6 @@
-import type { FlexibleTimezoneModuleOptions, ModuleOptions, StrictTimezoneModuleOptions } from '~/src/module'
+import type Module from 'module'
+import type { ModuleOptions } from './../../../src/module'
+import type { FlexibleTimezoneOptions, StrictTimezoneOptions } from './../utils/timezone'
 import type { CronTaskEvent } from '~/src/runtime/task/types'
 
 
@@ -83,8 +85,8 @@ export interface TypedEventEmitter<Events extends Record<string | symbol, (...ar
 
 // Helper functions
 export function createStrictModuleOptions(
-    options: StrictTimezoneModuleOptions,
-): StrictTimezoneModuleOptions {
+    options: ModuleOptions & { timezone?: StrictTimezoneOptions },
+): ModuleOptions & { timezone?: StrictTimezoneOptions } {
     return {
         ...options,
         storage: options.storage ?? { type: 'memory' },
@@ -97,8 +99,8 @@ export function createStrictModuleOptions(
 }
 
 export function createFlexibleModuleOptions(
-    options: FlexibleTimezoneModuleOptions,
-): FlexibleTimezoneModuleOptions {
+    options: ModuleOptions & { timezone?: FlexibleTimezoneOptions },
+): ModuleOptions & { timezone?: FlexibleTimezoneOptions } {
     return {
         ...options,
         storage: options.storage ?? { type: 'memory' },

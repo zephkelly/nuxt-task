@@ -1,7 +1,8 @@
 import { DateTime } from 'luxon'
 
-import { useRuntimeConfig } from '#imports'
 import { type ModuleOptions } from './../../module'
+import { getModuleOptions } from '../config';
+import { time } from 'console';
 
 
 
@@ -14,14 +15,14 @@ export interface FlexibleTimezoneOptions {
 export interface StrictTimezoneOptions {
     type: string
     validate: boolean
-    strict: true // explicitly true
+    strict: true
 }
 
 type DateFormatOptions = string | null
 type DateInput = Date | string
 
 
-class TimezoneUtils {
+export class TimezoneUtils {
     /**
      * Convert a date from one timezone to another
      * @param {DateInput} date - The date to convert
@@ -159,42 +160,81 @@ class TimezoneUtils {
         return dateTime.toFormat('ZZ')
     }
 
+    
     /**
      * Validate if a timezone string is valid
      * @param {string} timezone - The timezone to validate
      * @returns {boolean} - True if the timezone is valid
-     */
-    static isValidTimezone(timezone: string): boolean {
-        if (!timezone || typeof timezone !== 'string') {
+    */
+   static isValidTimezone(timezone: StrictTimezoneOptions | FlexibleTimezoneOptions | string): boolean {
+       if (!timezone || (typeof timezone !== 'string' && typeof timezone !== 'object')) {
             return false
         }
-
+        
+        if (typeof timezone === 'string') {
+            return this.isValidTimezoneString(timezone)
+        }
+        
+        return this.isValidTimezoneOptions(timezone)
+    }
+    
+    /**
+     * Validate if a timezone string is valid
+     * @param {string} timezone - The timezone to validate
+     * @returns {boolean} - True if the timezone is valid
+     * @internal For internal use only
+     * @see isValidTimezonens
+    */
+    private static isValidTimezoneOptions(timezone: StrictTimezoneOptions | FlexibleTimezoneOptions): boolean {
         try {
-            const dt = DateTime.now().setZone(timezone)
+            const dt = DateTime.now().setZone(timezone.type)
             return dt.isValid
         }
         catch (e) {
+            console.log('Error validating timezone', e)
             return false
         }
     }
 
     /**
-     * Validate if a timezone string matches the strict timezone configuration
-     * @param {string} timezone - The timezone to validate
-     * @returns {boolean} - True if the timezone matches the module's strict configuration
+     * Validate if a timezone string is valid
+     * @param {string} timezoneString - The timezone to validate
+     * @returns {boolean} - True if the timezone is valid
+     * @internal For internal use only
+     * @see isValidTimezone
+    */
+    private static isValidTimezoneString(timezoneString: string): boolean {
+        return DateTime.now().setZone(timezoneString).isValid
+    }
+
+    /**
+     * Validate if a timezone string matches the flexible timezone configuration
+     * @param {string} timezone - The timezone to validate 
+     * @returns {boolean} - True if the timezone matches the module's flexible configuration
      */
-    static isValidStrictTimezone(timezone: string): boolean {
-        if (!TimezoneUtils.isValidTimezone(timezone)) {
+    static isStrictTimezoneModuleOptions(
+        options: ModuleOptions,
+    ): boolean {
+        if (!options.timezone) {
             return false
         }
-
-        const moduleOptions: ModuleOptions = useRuntimeConfig().public.cron as ModuleOptions
-        if (!moduleOptions.timezone.strict) {
-            return true
+        
+        return options.timezone.strict === true
+    }
+    
+    /**
+     * Validate if a timezone string matches the flexible timezone configuration
+     * @param {string} timezone - The timezone to validate 
+     * @returns {boolean} - True if the timezone matches the module's flexible configuration
+     */
+    static isFlexibleTimezoneModuleOptions(
+        options: ModuleOptions,
+    ): boolean {
+        if (!options.timezone) {
+            return false
         }
-
-        // For strict mode, ensure the timezone matches the configured timezone exactly
-        return moduleOptions.timezone.type === timezone
+        
+        return options.timezone.strict === false
     }
 }
 

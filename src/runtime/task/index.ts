@@ -3,7 +3,8 @@ import type {
     FlexibleCronTaskOptions,
 } from './types'
 
-import { type ModuleOptions, type StrictTimezoneModuleOptions } from './../../module'
+import { type FlexibleTimezoneOptions, type StrictTimezoneOptions } from './../utils/timezone';
+import { type ModuleOptions } from './../../module'
 import { getModuleOptions } from '../config'
 
 
@@ -21,25 +22,4 @@ export function validateTaskTimezone<T extends ModuleOptions>(
             + 'Use the module-level timezone configuration instead.',
         )
     }
-}
-
-export function isStrictTimezoneOptions(
-    options: ModuleOptions,
-): options is StrictTimezoneModuleOptions {
-    if (!options.timezone) {
-        return false
-    }
-    
-    return options.timezone.strict === true
-}
-
-export function getEffectiveTimezone<T extends ModuleOptions>(
-    moduleOptions: T,
-    taskOptions: CronTaskOptions<T>,
-): string {
-    if (isStrictTimezoneOptions(moduleOptions as ModuleOptions)) {
-        return moduleOptions.timezone.type
-    }
-
-    return (taskOptions as FlexibleCronTaskOptions).timezone || moduleOptions.timezone.type || 'UTC'
 }

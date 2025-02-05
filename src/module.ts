@@ -2,21 +2,20 @@ import { defu } from 'defu'
 import { join } from 'pathe'
 import { readdir, access } from 'fs/promises'
 import { constants } from 'fs'
-import { defineNuxtModule, addPlugin, createResolver, addImports } from '@nuxt/kit'
+import { defineNuxtModule, addPlugin, createResolver, addImports, addTemplate } from '@nuxt/kit'
 
 
 import type { StorageType } from './runtime/storage'
 
 import type { FlexibleTimezoneOptions, StrictTimezoneOptions } from './runtime/utils/timezone'
 
-import { defaultModuleOptions, setModuleOptions } from './runtime/config'
+import { moduleConfig } from './runtime/config'
 
 import { scanTasksDirectory } from './runtime/server/nitro/utils/scanTasks'
 
 
 
-
-interface BaseModuleOptions {
+export interface BaseModuleOptions {
     serverTasks?: boolean
     clientTasks?: boolean
     experimental?: {
@@ -28,16 +27,11 @@ interface BaseModuleOptions {
     }
 }
 
-export interface FlexibleTimezoneModuleOptions extends BaseModuleOptions {
-    timezone: FlexibleTimezoneOptions
-}
-
-export interface StrictTimezoneModuleOptions extends BaseModuleOptions {
-    timezone: StrictTimezoneOptions
-}
 
 // Type used for external configuration
-export type ModuleOptions = FlexibleTimezoneModuleOptions | StrictTimezoneModuleOptions
+export type ModuleOptions = BaseModuleOptions & {
+    timezone: FlexibleTimezoneOptions | StrictTimezoneOptions
+}
 
 
 
@@ -49,54 +43,79 @@ export default defineNuxtModule<ModuleOptions>({
             nuxt: '^3.10.0 || ^4.0.0',
         },
     },
-    defaults: defaultModuleOptions as ModuleOptions,
-    setup(moduleOptions, nuxt) {
+    defaults: moduleConfig.getDefaultModuleOptions(),
+    async setup(moduleOptions, nuxt) {
         const { resolve } = createResolver(import.meta.url)
         const runtimeDir = resolve('./runtime')
+
+        moduleConfig.setModuleOptions(moduleOptions)
         
-        // Ensure options are properly merged
-        const options = defu(moduleOptions, defaultModuleOptions) as ModuleOptions
-    
-        // Add runtime directory to Nuxt
-        nuxt.options.build = nuxt.options.build || {}
-        nuxt.options.build.transpile = nuxt.options.build.transpile || []
-        nuxt.options.build.transpile.push(runtimeDir)
-    
-        // Setup runtime config
-        nuxt.options.runtimeConfig.public = nuxt.options.runtimeConfig.public || {}
-        nuxt.options.runtimeConfig.public.cron = options
-    
-        // Add auto-imports for the task handler
-        addImports([
-          {
-            name: 'defineTaskHandler',
-            as: 'defineTaskHandler',
-            from: resolve(join(runtimeDir, 'server/nitro/handler')), // Adjust path based on your structure
-          }
-        ])
-    
         // Add module aliases
         nuxt.options.alias['#nuxt-cron'] = runtimeDir
+
+        addImports([
+            {
+              name: 'defineTaskHandler',
+              as: 'defineTaskHandler',
+              from: resolve(join(runtimeDir, 'server/nitro/handler')), // Adjust path based on your structure
+              priority: 20
+            }
+        ])
+
+        addTemplate({
+            filename: 'types/nuxt-cron.d.ts',
+            getContents: () => `
+            declare module '#nuxt-cron' {
+                export * from '${resolve('./runtime/types')}'
+                export type { ModuleOptions } from '${resolve('./module')}'
+            }
+        `})
+
+        nuxt.hook('prepare:types', ({ references }) => {
+            references.push({ path: resolve(nuxt.options.buildDir, 'types/nuxt-cron.d.ts') })
+        })
+
+        const runtimeDirs = [
+            resolve('./runtime'),
+            resolve('./task'),
+            resolve('./server')
+          ]
+        nuxt.options.build = nuxt.options.build || {}
+        nuxt.options.build.transpile = nuxt.options.build.transpile || []
+        nuxt.options.build.transpile.push(...runtimeDirs)
         
+        // // Ensure options are properly merged
+        // const options = defu(moduleOptions, defaultModuleOptions) as ModuleOptions
+    
+        // // Setup runtime config
+        // nuxt.options.runtimeConfig.public = nuxt.options.runtimeConfig.public || {}
+
+        // //@ts-expect-error
+        // nuxt.options.runtimeConfig.public.cron = options
+    
+    
         // Ensure consistent options across Nitro
-        nuxt.hook('nitro:config', (nitroConfig) => {
+        await nuxt.hook('nitro:config', async (nitroConfig) => {
+            console.log('hello')
           nitroConfig.alias = nitroConfig.alias || {}
           nitroConfig.alias['#nuxt-cron'] = runtimeDir
     
           // Add virtual imports
           nitroConfig.virtual = nitroConfig.virtual || {}
           nitroConfig.virtual['#nuxt-cron/types'] = `export * from '${resolve('./runtime/types')}'`
-          nitroConfig.virtual['#cron-config'] = `export default ${JSON.stringify(options)}`
+          nitroConfig.virtual['#cron-config'] = `export default ${JSON.stringify(moduleOptions)}`
           
           // Ensure runtime config is consistent
           nitroConfig.runtimeConfig = nitroConfig.runtimeConfig || {}
           nitroConfig.runtimeConfig.public = nitroConfig.runtimeConfig.public || {}
-          nitroConfig.runtimeConfig.public.cron = options
+          nitroConfig.runtimeConfig.public.cron = moduleOptions
     
           // Explicitly set experimental tasks in Nitro config
-          if (options.experimental?.tasks) {
+          if (moduleOptions.experimental?.tasks) {
             nitroConfig.experimental = nitroConfig.experimental || {}
             nitroConfig.experimental.tasks = true
+
+            await configureNitroTasks(moduleOptions, nitroConfig, nuxt)
           }
         })
     
@@ -104,10 +123,6 @@ export default defineNuxtModule<ModuleOptions>({
         addPlugin({
           src: resolve('./runtime/plugin')
         })
-    
-        // Debug logging
-        console.log('Runtime directory:', runtimeDir)
-        console.log('Module options:', options)
     }
 })
 
@@ -139,6 +154,8 @@ export async function configureNitroTasks(
         }
 
         const tasks = await scanTasksDirectory(tasksDir)
+
+        console.log('Found tasks:', tasks)
         
         // Group tasks by cron expression for scheduled tasks
         const scheduledTasksMap = new Map<string, string[]>()
@@ -149,8 +166,10 @@ export async function configureNitroTasks(
                 const relativePath = task.path.substring(tasksDir.length + 1)
                 // Convert the path to the module import path format
                 const modulePath = relativePath.replace(/\.[^/.]+$/, '') // Remove extension
-
+                console.log('modulePath:', modulePath)
+                console.log('task.path:', task.path)
                 const taskModule = await import(task.path)
+                console.log(`Registered task`, taskModule)
                 if (taskModule?.default?.meta) {
                     // Register task metadata
                     nitroConfig.tasks[task.name] = {
@@ -172,6 +191,7 @@ export async function configureNitroTasks(
                         method: 'post',
                         handler: `~/server/tasks/${modulePath}`
                     }
+
                 }
             } catch (error) {
                 console.warn(`Failed to load task ${task.name}:`, error)
@@ -182,6 +202,8 @@ export async function configureNitroTasks(
         nitroConfig.scheduledTasks = Array.from(scheduledTasksMap.entries()).map(
             ([cron, tasks]) => ({ cron, tasks })
         )
+
+        console.log('Scheduled tasks:', nitroConfig.scheduledTasks)
 
         // Register the tasks list endpoint
         nitroConfig.handlers['/_nitro/tasks'] = {

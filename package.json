@@ -8,9 +8,9 @@
   "exports": {
     ".": {
       "types": "./dist/types.d.ts",
-      "import": "./dist/module.mjs",
-      "require": "./dist/module.cjs"
-    }
+      "import": "./dist/module.mjs"
+    },
+    "./runtime/*": "./dist/runtime/*"
   },
   "typesVersions": {
     "*": {
