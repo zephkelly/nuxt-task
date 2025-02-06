@@ -111,8 +111,11 @@ export class TaskQueue extends EventEmitter {
             return
         }
 
-        // Skip if maximum retries exceeded
-        if (task.metadata.runCount > (task.options.maxRetries || 0)) {
+        // Calculate total allowed attempts (initial + retries)
+        const maxAttempts = (task.options.maxRetries || 0) + 1
+
+        // Skip if we've reached max attempts
+        if (task.metadata.runCount >= maxAttempts) {
             return
         }
 
@@ -133,6 +136,7 @@ export class TaskQueue extends EventEmitter {
             task.status = 'completed'
             task.metadata.lastRun = new Date()
             task.metadata.runCount++
+
             this.emit('completed', { type: 'completed', task, result })
         }
         catch (error: unknown) {
@@ -140,22 +144,23 @@ export class TaskQueue extends EventEmitter {
             task.metadata.lastError = error as Error
             task.metadata.runCount++
 
-            if (task.metadata.runCount <= (task.options.maxRetries || 0)) {
+            // Emit failed event first
+            this.emit('failed', { type: 'failed', task, error: error as Error })
+
+            // Then check for retry
+            if (task.metadata.runCount < maxAttempts) {
                 this.emit('retry', { type: 'retry', task, attempt: task.metadata.runCount })
+
                 const retryTimeout = setTimeout(() => {
                     this.executeTask(taskId)
                     clearTimeout(retryTimeout)
                 }, task.options.retryDelay || 1000)
-            }
-            else {
-                this.emit('failed', { type: 'failed', task, error: error as Error })
             }
         }
         finally {
             this.running.delete(taskId)
         }
     }
-
     /**
      * Pauses a task
      * 
@@ -193,7 +198,6 @@ export class TaskQueue extends EventEmitter {
     }
 }
 
-// Type exports for better IDE support
 export type {
     CronTask,
     TaskId

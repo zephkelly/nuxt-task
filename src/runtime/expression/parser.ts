@@ -165,6 +165,10 @@ export class CronExpressionParser {
         const trimmedValue = value.trim()
         const range = CRON_RANGES[field]
 
+        if (!trimmedValue) {
+            throw new CronExpressionParseError('Invalid number format', field, value)
+        }
+
         switch (true) {
             case trimmedValue === '*':
                 return this.handleAsterisk(range)

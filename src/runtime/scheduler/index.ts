@@ -665,6 +665,7 @@ export class Scheduler extends EventEmitter {
      */
     private async restore(): Promise<void> {
         try {
+            this.queue.clear()
             const tasks = await this.storage.getAll()
             tasks.forEach(task => this.queue.add(task))
         }

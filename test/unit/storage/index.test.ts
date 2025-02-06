@@ -122,7 +122,7 @@ describe('MemoryStorage', () => {
             }
 
             const task1 = await storage.add(taskData1)
-            
+
             vi.advanceTimersByTime(1000)
 
             const taskData2 = {
@@ -137,7 +137,7 @@ describe('MemoryStorage', () => {
             const allTasks = await storage.getAll()
             expect(allTasks).toHaveLength(2)
             expect(allTasks).toEqual(expect.arrayContaining([task1, task2]))
-            
+
             expect(task2.metadata.createdAt.getTime()).toBeGreaterThan(task1.metadata.createdAt.getTime())
         })
     })
@@ -161,7 +161,7 @@ describe('MemoryStorage', () => {
 
             const finalTask = await storage.get(Task.id)
             expect(updates.some(u => u.name === finalTask?.name)).toBe(true)
-            
+
             updates.forEach(update => {
                 expect(update.metadata.updatedAt.getTime()).toBeGreaterThan(Task.metadata.createdAt.getTime())
             })
@@ -183,7 +183,7 @@ describe('MemoryStorage', () => {
 
             expect(Task.metadata.lastRun).toBeUndefined()
             expect(Task.metadata.nextRun).toBeUndefined()
-            
+
             expect(Task.metadata.createdAt).toEqual(new Date(currentTime))
         })
 

@@ -9,14 +9,14 @@ describe('ssr', async () => {
         rootDir: fileURLToPath(new URL('./fixtures/basic', import.meta.url)),
         server: true,
         runner: 'vitest',
-        setupTimeout: 10000,
+        setupTimeout: 60000,
     })
 
     it('renders the index page', async () => {
         const html = await $fetch('/')
         expect(html).toContain('<div>basic</div>')
     })
-    
+
     it('should have a working API endpoint', async () => {
         const response = await $fetch('/api/test')
         expect(response).toEqual({

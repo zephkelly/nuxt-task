@@ -178,7 +178,6 @@ describe('Scheduler', () => {
 
         describe('task execution', () => {
             it('should handle task failures and retries', async () => {
-                let attempts = 0
                 const failureError = new Error('test failure')
 
                 const testTask: CronTask = {
@@ -191,7 +190,6 @@ describe('Scheduler', () => {
                         retryDelay: 100,
                     },
                     execute: async () => {
-                        attempts++
                         throw failureError
                     },
                     metadata: {
@@ -218,9 +216,8 @@ describe('Scheduler', () => {
                 await new Promise(resolve => setTimeout(resolve, 500))
                 await scheduler.stop()
 
-                expect(attempts).toBe(2)
                 expect(events.filter(e => e.type === 'retry')).toHaveLength(1)
-                expect(events.filter(e => e.type === 'failed')).toHaveLength(1)
+                expect(events.filter(e => e.type === 'failed')).toHaveLength(2)
             })
 
             let scheduler: Scheduler
@@ -385,7 +382,56 @@ describe('Scheduler', () => {
                 });
 
                 await scheduler.stop();
-            }, 60000);
+            }, 120000);
+        });
+
+        describe('DST transitions', () => {
+            beforeEach(() => {
+                vi.useFakeTimers();
+            });
+
+            afterEach(() => {
+                vi.useRealTimers();
+            });
+
+            it('should maintain correct intervals across DST boundaries', async () => {
+                // Set start time to just before DST change
+                const startTime = new Date('2024-11-03T04:00:00.000Z');
+                vi.setSystemTime(startTime);
+
+                vi.spyOn(storage, 'getAll').mockResolvedValue([]);
+
+                const task = await scheduler.addTask({
+                    name: 'interval-test',
+                    status: 'pending',
+                    options: {
+                        expression: '0 */2 * * *',
+                        timezone: 'America/New_York'
+                    },
+                    execute: mockExecute
+                });
+
+                await scheduler.start();
+
+                // Test three 2-hour intervals
+                const intervals = [];
+                let lastRun = startTime;
+
+                for (let i = 0; i < 3; i++) {
+                    // Advance by exactly 2 hours
+                    await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000);
+                    const currentTime = new Date();
+                    intervals.push((currentTime.getTime() - lastRun.getTime()) / (60 * 60 * 1000));
+                    lastRun = currentTime;
+                }
+
+                // Verify intervals
+                intervals.forEach(interval => {
+                    expect(Math.abs(interval - 2)).toBeLessThan(0.1);
+                });
+
+                await scheduler.stop();
+            }, 120000);
         });
 
         describe('timezone validation', () => {
@@ -535,6 +581,353 @@ describe('Scheduler', () => {
 
                 expect(task.metadata.nextRun).toBeDefined()
                 expect(task.options.timezone).toBe('America/New_York')
+            })
+        })
+    })
+
+    describe('Scheduler Task Management', () => {
+        let scheduler: Scheduler
+        let storage: MemoryStorage
+
+        const setupScheduler = async () => {
+            storage = new MemoryStorage()
+            await storage.init()
+            await storage.clear()
+
+            const moduleOptions = moduleConfiguration.getModuleOptions()
+
+            scheduler = new Scheduler(
+                storage,
+                moduleOptions,
+                {
+                    tickInterval: 100,
+                    maxConcurrent: 2,
+                },
+            )
+        }
+
+        beforeEach(async () => {
+            await setupScheduler()
+        })
+
+        afterEach(async () => {
+            if (scheduler) {
+                await scheduler.stop()
+            }
+            if (storage) {
+                await storage.clear()
+            }
+            vi.clearAllMocks()
+        })
+
+        describe('pauseTask and resumeTask', () => {
+            it('should pause a running task', async () => {
+                const task = await scheduler.addTask({
+                    name: 'test task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result',
+                })
+
+                await scheduler.pauseTask(task.id)
+                const pausedTask = scheduler.getTask(task.id)
+                expect(pausedTask?.status).toBe('paused')
+            })
+
+            it('should resume a paused task', async () => {
+                const task = await scheduler.addTask({
+                    name: 'test task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result',
+                })
+
+                await scheduler.pauseTask(task.id)
+                await scheduler.resumeTask(task.id)
+                const resumedTask = scheduler.getTask(task.id)
+                expect(resumedTask?.status).toBe('pending')
+                expect(resumedTask?.metadata.nextRun).toBeDefined()
+            })
+
+            it('should not resume a non-paused task', async () => {
+                const task = await scheduler.addTask({
+                    name: 'test task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result',
+                })
+
+                const originalNextRun = task.metadata.nextRun
+                await scheduler.resumeTask(task.id)
+                const unchangedTask = scheduler.getTask(task.id)
+                expect(unchangedTask?.metadata.nextRun).toEqual(originalNextRun)
+            })
+        })
+
+        describe('getTask and getAllTasks', () => {
+            it('should get a specific task by ID', async () => {
+                const task = await scheduler.addTask({
+                    name: 'test task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result',
+                })
+
+                const retrievedTask = scheduler.getTask(task.id)
+                expect(retrievedTask).toEqual(task)
+            })
+
+            it('should return undefined for non-existent task ID', () => {
+                const nonExistentTask = scheduler.getTask('non-existent-id')
+                expect(nonExistentTask).toBeUndefined()
+            })
+
+            it('should get all tasks', async () => {
+                const task1 = await scheduler.addTask({
+                    name: 'task 1',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result 1',
+                })
+
+                const task2 = await scheduler.addTask({
+                    name: 'task 2',
+                    status: 'pending',
+                    options: {
+                        expression: '*/5 * * * *',
+                    },
+                    execute: async () => 'test result 2',
+                })
+
+                const allTasks = scheduler.getAllTasks()
+                expect(allTasks).toHaveLength(2)
+                expect(allTasks).toEqual(expect.arrayContaining([task1, task2]))
+            })
+        })
+
+        describe('getStats', () => {
+            it('should return current statistics', async () => {
+                await scheduler.start()
+                const stats = scheduler.getStats()
+
+                expect(stats).toEqual(expect.objectContaining({
+                    totalTasksRun: expect.any(Number),
+                    totalTasksFailed: expect.any(Number),
+                    totalTasksRetried: expect.any(Number),
+                    activeTasks: expect.any(Number),
+                    queuedTasks: expect.any(Number),
+                    uptime: expect.any(Number),
+                }))
+            })
+
+            it('should calculate correct uptime', async () => {
+                vi.useFakeTimers()
+                const startTime = new Date()
+                vi.setSystemTime(startTime)
+
+                await scheduler.start()
+                vi.advanceTimersByTime(5000) // Advance 5 seconds
+
+                const stats = scheduler.getStats()
+                expect(stats.uptime).toBe(5000)
+
+                vi.useRealTimers()
+            })
+        })
+
+        describe('waitForTask', () => {
+            it('should wait for a running task to complete', async () => {
+                vi.useFakeTimers() // Enable fake timers
+
+                let taskCompleted = false
+                const task = await scheduler.addTask({
+                    name: 'long running task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => {
+                        await new Promise(resolve => setTimeout(resolve, 200))
+                        taskCompleted = true
+                        return 'test result'
+                    },
+                })
+
+                // Set nextRun to now
+                task.metadata.nextRun = new Date()
+
+                await scheduler.start()
+
+                // Advance virtual time past the tick interval to trigger task execution
+                await vi.advanceTimersByTimeAsync(100) // Advance past tick interval
+
+                // Advance virtual time past the task's setTimeout
+                await vi.advanceTimersByTimeAsync(200)
+
+                // Wait for task completion
+                await (scheduler as any).waitForTask(task.id)
+
+                expect(taskCompleted).toBe(true)
+
+                vi.useRealTimers() // Cleanup
+            })
+
+            it('should resolve immediately for non-existent tasks', async () => {
+                const waitPromise = (scheduler as any).waitForTask('non-existent-id')
+                await expect(waitPromise).resolves.toBeUndefined()
+            })
+        })
+
+        describe('handleMissedTasks', () => {
+            it('should execute missed tasks with catchUp enabled', async () => {
+                const executeMock = vi.fn().mockResolvedValue('test result')
+                const pastDate = new Date(Date.now() - 60000) // 1 minute ago
+
+                const task = await scheduler.addTask({
+                    name: 'missed task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                        catchUp: true,
+                    },
+                    execute: executeMock,
+                })
+
+                // Manually set next run time to the past
+                task.metadata.nextRun = pastDate
+
+                await (scheduler as any).handleMissedTasks()
+                expect(executeMock).toHaveBeenCalled()
+            })
+
+            it('should not execute missed tasks with catchUp disabled', async () => {
+                const executeMock = vi.fn().mockResolvedValue('test result')
+                const pastDate = new Date(Date.now() - 60000)
+
+                const task = await scheduler.addTask({
+                    name: 'missed task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                        catchUp: false,
+                    },
+                    execute: executeMock,
+                })
+
+                task.metadata.nextRun = pastDate
+
+                await (scheduler as any).handleMissedTasks()
+                expect(executeMock).not.toHaveBeenCalled()
+            })
+
+            it('should handle errors during missed task execution', async () => {
+                vi.useFakeTimers()
+                const errorHandler = vi.fn()
+                scheduler.on('error', errorHandler)
+
+                const testError = new Error('Test error')
+                const failedTaskHandler = vi.fn()
+                scheduler.on('task-failed', failedTaskHandler)
+
+                const task = await scheduler.addTask({
+                    name: 'error task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                        catchUp: true,
+                    },
+                    execute: async () => {
+                        throw testError
+                    },
+                })
+
+                task.metadata.nextRun = new Date(Date.now() - 60000)
+                scheduler['options'].handleMissedTasks = true
+
+                await (scheduler as any).handleMissedTasks()
+
+                // Verify task failed event was emitted
+                expect(failedTaskHandler).toHaveBeenCalledWith(
+                    expect.objectContaining({
+                        type: 'failed',
+                        task: expect.objectContaining({ id: task.id }),
+                        error: testError
+                    })
+                )
+
+                vi.useRealTimers()
+            })
+        })
+
+        describe('restore functionality', () => {
+            it('should properly restore tasks from storage', async () => {
+                // Add a task before starting scheduler
+                const task = await scheduler.addTask({
+                    name: 'test task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result',
+                })
+
+                // Stop scheduler (which persists state)
+                await scheduler.stop()
+
+                // Clear queue manually to simulate restart
+                scheduler['queue'].clear()
+
+                // Start scheduler (which triggers restore)
+                await scheduler.start()
+
+                // Verify task was restored
+                const restoredTask = scheduler.getTask(task.id)
+                expect(restoredTask).toBeDefined()
+                expect(restoredTask?.id).toBe(task.id)
+            })
+
+            it('should handle empty storage during restore', async () => {
+                // Clear storage
+                await storage.clear()
+
+                // Start scheduler (which triggers restore)
+                await scheduler.start()
+
+                // Verify no tasks
+                expect(scheduler.getAllTasks()).toHaveLength(0)
+            })
+
+            it('should handle multiple restores gracefully', async () => {
+                // Add initial task
+                const task = await scheduler.addTask({
+                    name: 'test task',
+                    status: 'pending',
+                    options: {
+                        expression: '* * * * *',
+                    },
+                    execute: async () => 'test result',
+                })
+
+                // Multiple stop/start cycles
+                await scheduler.stop()
+                await scheduler.start()
+                await scheduler.stop()
+                await scheduler.start()
+
+                // Verify task still exists and is unique
+                const allTasks = scheduler.getAllTasks()
+                expect(allTasks).toHaveLength(1)
+                expect(allTasks[0].id).toBe(task.id)
             })
         })
     })

@@ -7,7 +7,6 @@ import { BaseStorage, type BaseStorageConfig } from './base'
 
 
 
-
 export interface RedisConfig extends BaseStorageConfig {
     url: string
     password?: string
@@ -36,7 +35,7 @@ export class RedisStorage extends BaseStorage implements CronStorage {
             await this.client.connect()
         }
         catch (error) {
-            throw new Error('Redis client unavailable. Make sure redis is installed: npm install redis')
+            throw new Error('Redis client unavailable')
         }
     }
 
@@ -56,7 +55,7 @@ export class RedisStorage extends BaseStorage implements CronStorage {
 
         if (!data) return null
 
-        return JSON.parse(data)
+        return await this.parseTask(data)
     }
 
     async getAll(): Promise<CronTask[]> {
@@ -64,13 +63,20 @@ export class RedisStorage extends BaseStorage implements CronStorage {
 
         if (!keys.length) return []
 
-        const Tasks = await Promise.all(
+        const storedTasks = await Promise.all(
             keys.map(key => this.client.get(key)),
         )
 
-        return Tasks
-            .filter((Task): Task is string => Task !== null)
-            .map(Task => JSON.parse(Task))
+        const filteredTasks = await Promise.all(
+            storedTasks
+                .filter((stringifyedTask): stringifyedTask is string => stringifyedTask !== null)
+                .map(async stringifyedTask => {
+                    const typedTask = await this.parseTask(stringifyedTask)
+                    return typedTask
+                })
+        );
+
+        return filteredTasks
     }
 
     async update(id: string, updates: Partial<CronTask>): Promise<CronTask> {
@@ -97,6 +103,28 @@ export class RedisStorage extends BaseStorage implements CronStorage {
         if (keys.length) {
             await this.client.del(keys)
         }
+    }
+
+    async parseTask(stringifyedTask: string): Promise<CronTask> {
+        const parsedTask = JSON.parse(stringifyedTask);
+
+        const cleanMetadata = Object.fromEntries(
+            Object.entries(parsedTask.metadata)
+                .filter(([_, value]) => value !== undefined)
+        );
+
+        const typedTask: CronTask = {
+            ...parsedTask,
+            metadata: {
+                ...cleanMetadata,
+                lastRun: parsedTask.metadata.lastRun ? new Date(parsedTask.metadata.lastRun) : undefined,
+                nextRun: parsedTask.metadata.nextRun ? new Date(parsedTask.metadata.nextRun) : undefined,
+                createdAt: new Date(parsedTask.metadata.createdAt),
+                updatedAt: new Date(parsedTask.metadata.updatedAt)
+            }
+        }
+
+        return typedTask
     }
 }
 
