@@ -12,10 +12,7 @@ export default defineTaskHandler({
         console.log('Example task executed')
 
         return {
-            result: {
-                success: true,
-                message: 'Example task executed'
-            }
+            message: 'Example task executed'
         }
     }
 })

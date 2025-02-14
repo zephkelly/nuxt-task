@@ -2,6 +2,7 @@ import type { CronTaskOptions, CronTask } from '../../task/types'
 import CronExpressionParser from '../../expression/parser'
 
 import type { ModuleOptions } from './../../../module'
+import { scheduler } from 'timers/promises'
 
 
 interface TaskContext {
@@ -51,6 +52,7 @@ export function defineTaskHandler<T = any>(definition: NuxtCronTaskDefinition<T>
                     ...context,
                     options: moduleOptions // Pass module options to handler
                 })
+
                 return { success: true, result }
             }
             catch (error) {
@@ -60,8 +62,12 @@ export function defineTaskHandler<T = any>(definition: NuxtCronTaskDefinition<T>
                     error: error instanceof Error ? error.message : 'Unknown error'
                 }
             }
-        }
+        },
+        // schedule: definition.schedule,
     }
 
-    return taskDefinition
+    return {
+        ...taskDefinition,
+        schedule: definition.schedule,
+    }
 }

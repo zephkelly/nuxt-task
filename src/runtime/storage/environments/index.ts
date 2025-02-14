@@ -20,12 +20,3 @@ export {
 
     createMemoryStorage
 } from './memory'
-
-
-//---/  Redis  /------------------------------------------
-export {
-    type RedisConfig,
-    RedisStorage,
-
-    createRedisStorage
-} from './redis'

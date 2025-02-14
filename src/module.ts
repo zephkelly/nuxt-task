@@ -13,6 +13,7 @@ import { scanTasksDirectory } from './runtime/server/nitro/utils/scanTasks'
 import type { Nuxt } from 'nuxt/schema'
 
 import { moduleConfiguration, DEFAULT_MODULE_OPTIONS } from './runtime/config'
+import { nitro } from 'process'
 
 
 
@@ -42,6 +43,7 @@ export default defineNuxtModule<ModuleOptions>({
     },
     defaults: DEFAULT_MODULE_OPTIONS,
     async setup(moduleOptions, nuxt) {
+        console.log('Setting up nuxt-cron module with options:', moduleOptions)
         const { resolve } = createResolver(import.meta.url)
         const runtimeDir = resolve('./runtime')
 
@@ -142,6 +144,7 @@ export async function configureNitroTasks(
                 const relativePath = task.path.substring(tasksDir.length + 1)
                 const modulePath = relativePath.replace(/\.[^/.]+$/, '') // Remove extension
                 const taskModule = await import(task.path)
+
                 if (taskModule?.default?.meta) {
                     nitroConfig.tasks[task.name] = {
                         name: task.name,
@@ -150,8 +153,8 @@ export async function configureNitroTasks(
                     }
 
                     // If task has a schedule, add it to scheduled tasks
-                    if (taskModule.default.meta.schedule) {
-                        const cronExpression = taskModule.default.meta.schedule
+                    if (taskModule.default.schedule) {
+                        const cronExpression = taskModule.default.schedule
                         const tasks = scheduledTasksMap.get(cronExpression) || []
                         tasks.push(task.name)
                         scheduledTasksMap.set(cronExpression, tasks)
@@ -163,6 +166,7 @@ export async function configureNitroTasks(
                         handler: `~/server/tasks/${modulePath}`
                     }
 
+                    console.log(`Loaded task ${task.name}.`)
                 }
             }
             catch (error) {
@@ -170,20 +174,23 @@ export async function configureNitroTasks(
             }
         }
 
+        const scheduledTasksObject = Array.from(scheduledTasksMap.entries()).reduce((acc, [cron, tasks]) => {
+            acc[cron] = tasks
+            return acc
+        }, {} as Record<string, string[]>)
+
         // Convert scheduled tasks map to array format expected by Nitro
-        nitroConfig.scheduledTasks = Array.from(scheduledTasksMap.entries()).map(
-            ([cron, tasks]) => ({ cron, tasks })
-        )
+        nitroConfig.scheduledTasks = scheduledTasksObject
+
 
         // Register the tasks list endpoint
         nitroConfig.handlers['/_nitro/tasks'] = {
             method: 'get',
             handler: {
                 tasks: nitroConfig.tasks || {},
-                scheduledTasks: nitroConfig.scheduledTasks || []
+                scheduledTasks: scheduledTasksObject || []
             }
         }
-
     }
     catch (error) {
         console.warn('Error configuring Nitro tasks:', error)

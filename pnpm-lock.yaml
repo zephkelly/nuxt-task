@@ -46,7 +46,7 @@ importers:
         specifier: latest
         version: 22.13.1
       '@vitest/coverage-v8':
-        specifier: ^3.0.4
+        specifier: ^3.0.5
         version: 3.0.5(vitest@3.0.5(@types/node@22.13.1)(happy-dom@16.8.1)(jiti@2.4.2)(terser@5.38.0)(yaml@2.7.0))
       '@vue/test-utils':
         specifier: ^2.4.6

@@ -69,15 +69,6 @@ vi.mock('../../../src/runtime/storage/environments/memory', () => ({
     })),
 }))
 
-// Mock the redis storage module
-vi.mock('../../../src/runtime/storage/environments/redis', () => ({
-    createRedisStorage: vi.fn(config => Promise.resolve({
-        type: 'redis' as const,
-        config,
-        init: vi.fn(),
-    })),
-}))
-
 describe('Storage Factory', () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -94,24 +85,6 @@ describe('Storage Factory', () => {
             const config: StorageConfig = { type: 'memory' }
             const storage = await createServerStorage(config)
             expect(storage).toHaveProperty('type', 'memory')
-        })
-
-        it('should create redis storage with config', async () => {
-            const redisConfig: StorageConfig = {
-                type: 'redis',
-                config: {
-                    url: 'redis://localhost:6379',
-                    password: 'test',
-                    database: 0,
-                },
-            }
-
-            const storage = await createServerStorage(redisConfig)
-
-            if (redisConfig.type === 'redis') {
-                expect(storage).toHaveProperty('type', 'redis')
-                expect(storage).toHaveProperty('config', redisConfig.config)
-            }
         })
 
         it('should throw error for unsupported storage types', async () => {
@@ -184,19 +157,6 @@ describe('Storage Factory', () => {
             expect(parsedTask.status).toBe(testTask.status)
             expect(parsedTask.metadata.runCount).toBe(0)
         })
-
-        it('should throw error for unsupported storage types', async () => {
-            const redisConfig: StorageConfig = {
-                type: 'redis',
-                config: {
-                    url: 'redis://localhost:6379',
-                },
-            }
-
-            await expect(async () => {
-                await createClientStorage(redisConfig)
-            }).rejects.toThrow('Storage type redis is not supported in browser environment')
-        })
     })
 
     describe('Edge Cases', () => {
@@ -217,21 +177,6 @@ describe('Storage Factory', () => {
             const key = keys.find(k => k.startsWith('cron:') && k.includes(storedTask.id))
             expect(key).toBeDefined()
             expect(key).toContain(storedTask.id)
-        })
-
-        it('should handle redis config with only required fields', async () => {
-            const redisConfig: StorageConfig = {
-                type: 'redis',
-                config: {
-                    url: 'redis://localhost:6379',
-                },
-            }
-
-            const storage = await createServerStorage(redisConfig)
-
-            if (redisConfig.type === 'redis') {
-                expect(storage).toHaveProperty('config.url', redisConfig.config.url)
-            }
         })
     })
 })

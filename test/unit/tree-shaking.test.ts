@@ -58,65 +58,6 @@ describe('Tree Shaking Tests', () => {
         }
     })
 
-    it('should not include Redis code in browser bundle', async () => {
-        const browserTestCode = `
-            import { createClientStorage } from './../../../src/runtime/storage';
-            
-            export async function initStorage() {
-                return createClientStorage({ 
-                    type: 'localStorage',
-                    config: { prefix: 'test:' }
-                });
-            }
-        `
-
-        const testFilePath = path.resolve(testTempDir, 'client-test.ts')
-        fs.writeFileSync(testFilePath, browserTestCode)
-
-        try {
-            const bundleContent = await analyzeBundleContent(testFilePath)
-            expect(bundleContent).not.toContain('redis')
-            expect(bundleContent).not.toContain('createRedisStorage')
-            expect(bundleContent).toContain('localStorage')
-            expect(bundleContent).toContain('ClientBaseStorage')
-        }
-        finally {
-            if (fs.existsSync(testFilePath)) {
-                fs.unlinkSync(testFilePath)
-            }
-        }
-    }, 30000)
-
-    it('should not include browser storage code in server bundle', async () => {
-        const serverTestCode = `
-            import { createRedisStorage } from './../../../src/runtime/storage/environments';
-            
-            export async function initStorage() {
-                return createRedisStorage({ 
-                    url: 'redis://localhost:6379',
-                    prefix: 'test:'
-                });
-            }
-        `
-
-        const testFilePath = path.resolve(testTempDir, 'server-test.ts')
-        fs.writeFileSync(testFilePath, serverTestCode)
-
-        try {
-            const bundleContent = await analyzeBundleContent(testFilePath)
-            expect(bundleContent).not.toContain('localStorage')
-            expect(bundleContent).not.toContain('sessionStorage')
-            expect(bundleContent).not.toContain('BrowserStorageBase')
-            expect(bundleContent).toContain('redis')
-            expect(bundleContent).toContain('createRedisStorage')
-        }
-        finally {
-            if (fs.existsSync(testFilePath)) {
-                fs.unlinkSync(testFilePath)
-            }
-        }
-    }, 30000)
-
     it('should include only memory storage when specified', async () => {
         const memoryTestCode = `
             import { createMemoryStorage } from './../../../src/runtime/storage/environments';
@@ -132,7 +73,6 @@ describe('Tree Shaking Tests', () => {
         try {
             const bundleContent = await analyzeBundleContent(testFilePath)
             expect(bundleContent).toContain('MemoryStorage')
-            expect(bundleContent).not.toContain('redis')
             expect(bundleContent).not.toContain('localStorage')
             expect(bundleContent).not.toContain('sessionStorage')
         }

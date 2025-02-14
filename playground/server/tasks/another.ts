@@ -9,10 +9,7 @@ export default defineTaskHandler({
     schedule: '* * * * *',
     handler: async (ctx) => {
         return {
-            result: {
-                success: true,
-                message: 'Example task executed'
-            }
+            message: 'Example task executed'
         }
     }
 })
