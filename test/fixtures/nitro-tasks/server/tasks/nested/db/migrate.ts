@@ -1,4 +1,4 @@
-import { defineTaskHandler } from '../../../../../../../src/runtime/server/nitro/handler'
+import { defineTaskHandler } from '../../../../../../../src/runtime/server/task/handler'
 
 
 
@@ -7,7 +7,7 @@ export default defineTaskHandler({
         name: 'migrate',
         description: 'Database migration task'
     },
-    schedule: '0 0 * * *', // Daily at midnight
+    schedule: '0 0 * * *',
     options: {
         timezone: 'UTC',
         exclusive: true,

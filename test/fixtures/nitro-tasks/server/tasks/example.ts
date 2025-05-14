@@ -1,4 +1,4 @@
-import { defineTaskHandler } from '../../../../../src/runtime/server/nitro/handler'
+import { defineTaskHandler } from '../../../../../src/runtime/server/task/handler'
 
 
 

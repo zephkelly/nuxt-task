@@ -17,10 +17,10 @@ export class TaskValidationError extends Error {
 
 export class TaskValidator {
     private static readonly NAME_MAX_LENGTH = 100
-    private static readonly MIN_TIMEOUT = 1000 // 1 second
-    private static readonly MAX_TIMEOUT = 24 * 60 * 60 * 1000 // 24 hours
-    private static readonly MIN_RETRY_DELAY = 100 // 100ms
-    private static readonly MAX_RETRY_DELAY = 60 * 60 * 1000 // 1 hour
+    private static readonly MIN_TIMEOUT = 1000
+    private static readonly MAX_TIMEOUT = 24 * 60 * 60 * 1000
+    private static readonly MIN_RETRY_DELAY = 100
+    private static readonly MAX_RETRY_DELAY = 60 * 60 * 1000
     private static readonly MAX_RETRIES = 10
 
     /**

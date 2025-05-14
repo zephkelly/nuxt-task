@@ -40,7 +40,6 @@ export class ModuleConfiguration {
 
         return this.options;
     }
-    
 
     // public static syncRuntimeConfig(nuxt?: Nuxt | undefined): void {
     //     let runtimeConfig: RuntimeConfig | undefined = undefined;

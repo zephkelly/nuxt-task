@@ -1,2 +1,1 @@
-export * from './task/types'
-export * from './server/nitro/handler'
+export { defineTaskHandler } from './server/task/handler'

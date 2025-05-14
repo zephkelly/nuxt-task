@@ -1,7 +1,6 @@
 import type { CronTask } from '../task/types'
 
 import type { BaseStorageConfig } from './environments/base'
-import type { RedisConfig } from './environments/redis'
 
 
 
@@ -17,7 +16,6 @@ export interface DatabaseConfig extends BaseStorageConfig {
 
 export type StorageConfig =
     | { type: 'memory' }
-    | { type: 'redis', config: RedisConfig }
     | { type: 'database', config: DatabaseConfig }
     | { type: 'sessionStorage' | 'localStorage', config?: BaseStorageConfig }
 

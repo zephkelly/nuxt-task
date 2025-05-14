@@ -96,7 +96,6 @@ describe('Scheduler', () => {
             it('should reject tasks with custom timezones in strict mode', async () => {
                 await expect(scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'America/New_York',
@@ -108,7 +107,6 @@ describe('Scheduler', () => {
             it('should accept tasks without timezone in strict mode', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -134,7 +132,6 @@ describe('Scheduler', () => {
             it('should accept tasks with custom timezones', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'America/New_York',
@@ -148,7 +145,6 @@ describe('Scheduler', () => {
             it('should use module timezone as fallback', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -166,7 +162,6 @@ describe('Scheduler', () => {
 
                 await expect(scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'Invalid/Timezone',
@@ -264,6 +259,77 @@ describe('Scheduler', () => {
                 vi.clearAllMocks()
                 vi.restoreAllMocks()
             })
+
+            it('should execute task multiple times on schedule', async () => {
+                vi.useFakeTimers()
+                const executeMock = vi.fn().mockResolvedValue('test result')
+                
+                const task = await scheduler.addTask({
+                    name: 'repeating task',
+                    options: {
+                        expression: '* * * * *', // Run every minute
+                    },
+                    execute: executeMock
+                })
+            
+                // Set initial next run time to now
+                task.metadata.nextRun = new Date()
+                
+                await scheduler.start()
+            
+                // Advance time by 3 minutes with smaller intervals
+                for (let i = 0; i < 180; i++) {
+                    await vi.advanceTimersByTimeAsync(1000) // Advance 1 second at a time
+                }
+            
+                await scheduler.stop()
+                
+                // Should have executed 3 times
+                expect(executeMock).toHaveBeenCalledTimes(3)
+                
+                vi.useRealTimers()
+            })
+        
+            it('should maintain correct execution intervals', async () => {
+                vi.useFakeTimers()
+                const executionTimes: number[] = []
+                const startTime = new Date()
+                
+                const task = await scheduler.addTask({
+                    name: 'interval task',
+                    options: {
+                        expression: '*/2 * * * *', // Run every 2 minutes
+                    },
+                    execute: async () => {
+                        executionTimes.push(Date.now())
+                        return 'test result'
+                    }
+                })
+        
+                task.metadata.nextRun = startTime
+                
+                await scheduler.start()
+        
+                // Advance time by 5 minutes
+                for (let i = 0; i < 5; i++) {
+                    await vi.advanceTimersByTimeAsync(60 * 1000) // Advance 1 minute
+                    await vi.advanceTimersByTimeAsync(100) // Small buffer
+                }
+        
+                await scheduler.stop()
+        
+                // Should have 3 executions (0, 2, 4 minutes)
+                expect(executionTimes).toHaveLength(3)
+        
+                // Verify intervals between executions
+                for (let i = 1; i < executionTimes.length; i++) {
+                    const interval = executionTimes[i] - executionTimes[i-1]
+                    // Should be approximately 2 minutes (120000ms)
+                    expect(interval).toBeCloseTo(120000, -2) // Allow small deviation
+                }
+                
+                vi.useRealTimers()
+            })
         })
 
         describe('error handling', () => {
@@ -273,7 +339,6 @@ describe('Scheduler', () => {
 
                 await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'Invalid/Timezone',
@@ -291,7 +356,6 @@ describe('Scheduler', () => {
 
                 await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: 'invalid cron',
                     },
@@ -353,7 +417,6 @@ describe('Scheduler', () => {
 
                 const task = await scheduler.addTask({
                     name: 'interval-test',
-                    status: 'pending',
                     options: {
                         expression: '0 */2 * * *',
                         timezone: 'America/New_York'
@@ -403,7 +466,6 @@ describe('Scheduler', () => {
 
                 const task = await scheduler.addTask({
                     name: 'interval-test',
-                    status: 'pending',
                     options: {
                         expression: '0 */2 * * *',
                         timezone: 'America/New_York'
@@ -438,7 +500,6 @@ describe('Scheduler', () => {
             it('should validate ambiguous times during DST transitions', async () => {
                 const task = await scheduler.addTask({
                     name: 'ambiguous-time-test',
-                    status: 'pending',
                     options: {
                         expression: '0 1 * * *',
                         timezone: 'America/New_York'
@@ -468,7 +529,6 @@ describe('Scheduler', () => {
             it('should use custom default timezone for tasks without timezone', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -481,7 +541,6 @@ describe('Scheduler', () => {
             it('should reject tasks with different timezone than default in strict mode', async () => {
                 await expect(scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'Europe/London',
@@ -493,7 +552,6 @@ describe('Scheduler', () => {
             it('should accept tasks explicitly using the default timezone', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'America/New_York',
@@ -515,7 +573,6 @@ describe('Scheduler', () => {
             it('should use custom default timezone when no timezone specified', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -528,7 +585,6 @@ describe('Scheduler', () => {
             it('should allow overriding default timezone with task-specific timezone', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'Europe/Paris',
@@ -547,7 +603,6 @@ describe('Scheduler', () => {
 
                 await expect(scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         timezone: 'Invalid/Zone',
@@ -572,7 +627,6 @@ describe('Scheduler', () => {
 
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '0 2 * * *',
                     },
@@ -624,7 +678,6 @@ describe('Scheduler', () => {
             it('should pause a running task', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -639,7 +692,6 @@ describe('Scheduler', () => {
             it('should resume a paused task', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -656,7 +708,6 @@ describe('Scheduler', () => {
             it('should not resume a non-paused task', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -674,7 +725,6 @@ describe('Scheduler', () => {
             it('should get a specific task by ID', async () => {
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -693,7 +743,6 @@ describe('Scheduler', () => {
             it('should get all tasks', async () => {
                 const task1 = await scheduler.addTask({
                     name: 'task 1',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -702,7 +751,6 @@ describe('Scheduler', () => {
 
                 const task2 = await scheduler.addTask({
                     name: 'task 2',
-                    status: 'pending',
                     options: {
                         expression: '*/5 * * * *',
                     },
@@ -752,7 +800,6 @@ describe('Scheduler', () => {
                 let taskCompleted = false
                 const task = await scheduler.addTask({
                     name: 'long running task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -795,7 +842,6 @@ describe('Scheduler', () => {
 
                 const task = await scheduler.addTask({
                     name: 'missed task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         catchUp: true,
@@ -816,7 +862,6 @@ describe('Scheduler', () => {
 
                 const task = await scheduler.addTask({
                     name: 'missed task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         catchUp: false,
@@ -841,7 +886,6 @@ describe('Scheduler', () => {
 
                 const task = await scheduler.addTask({
                     name: 'error task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                         catchUp: true,
@@ -874,7 +918,6 @@ describe('Scheduler', () => {
                 // Add a task before starting scheduler
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },
@@ -911,7 +954,6 @@ describe('Scheduler', () => {
                 // Add initial task
                 const task = await scheduler.addTask({
                     name: 'test task',
-                    status: 'pending',
                     options: {
                         expression: '* * * * *',
                     },

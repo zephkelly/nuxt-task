@@ -112,10 +112,10 @@ export class TaskQueue extends EventEmitter {
         }
 
         // Calculate total allowed attempts (initial + retries)
-        const maxAttempts = (task.options.maxRetries || 0) + 1
+        const maxAttempts = task.options.maxRetries ? task.options.maxRetries + 1 : -1
 
         // Skip if we've reached max attempts
-        if (task.metadata.runCount >= maxAttempts) {
+        if (maxAttempts !== -1 && task.metadata.runCount >= maxAttempts) {
             return
         }
 
@@ -144,10 +144,8 @@ export class TaskQueue extends EventEmitter {
             task.metadata.lastError = error as Error
             task.metadata.runCount++
 
-            // Emit failed event first
             this.emit('failed', { type: 'failed', task, error: error as Error })
 
-            // Then check for retry
             if (task.metadata.runCount < maxAttempts) {
                 this.emit('retry', { type: 'retry', task, attempt: task.metadata.runCount })
 
@@ -161,6 +159,7 @@ export class TaskQueue extends EventEmitter {
             this.running.delete(taskId)
         }
     }
+    
     /**
      * Pauses a task
      * 

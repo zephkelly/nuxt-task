@@ -1,11 +1,13 @@
-import { defineTaskHandler } from "#nuxt-cron/server/nitro/handler"
+import { defineTaskHandler } from '#nuxt-cron'
+
+
 
 export default defineTaskHandler({
     meta: {
-        name: 'example',
+        name: 'migrate',
         description: 'Example task for testing',
     },
-    schedule: '* * * * *',
+    schedule: '* 1 * * *',
     handler: async (ctx) => {
         return {
             result: {

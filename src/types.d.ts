@@ -1,11 +1,13 @@
 import type { ModuleOptions } from './module'
 
+import type { Scheduler } from './runtime/scheduler'
 
 declare module '#nuxt-cron' {
     export * from './runtime/types'
     export * from './runtime/server/nitro/handler'
     export type { ModuleOptions } from './module'
 }
+
   
 
 declare module '@nuxt/schema' {
@@ -49,5 +51,13 @@ declare module 'nuxt/schema' {
         cron: ModuleOptions
     }
 }
+
+declare module '@nuxt/kit' {
+    interface NuxtAppOptions {
+        scheduler: Scheduler
+    }
+}
+
+
 
 export {}

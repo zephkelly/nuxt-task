@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { join } from 'pathe'
 import type { Dirent } from 'fs'
-import { scanTasksDirectory, parseTaskName } from './../../../src/runtime/server/nitro/utils/scanTasks'
+import { scanTasksDirectory, parseTaskName } from '../../../src/runtime/utils/scanTasks'
 import { readdir } from 'fs/promises'
 
 

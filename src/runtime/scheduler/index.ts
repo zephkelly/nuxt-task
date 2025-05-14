@@ -1,5 +1,5 @@
 
-import { DateTime, Zone } from 'luxon'
+import { DateTime } from 'luxon'
 import TimezoneUtils from '../utils/timezone'
 
 import { EventEmitter } from 'node:events'
@@ -221,7 +221,7 @@ export class Scheduler extends EventEmitter {
      * @returns {Promise<CronTask>} The complete task object with generated id and metadata
      * @throws {Error} If the task addition fails or timezone configuration is invalid
      */
-    async addTask(task: Omit<CronTask, 'id' | 'metadata'>): Promise<CronTask> {
+    async addTask(task: Omit<CronTask, 'id' | 'metadata' | 'status'>): Promise<CronTask> {
         try {
             if (this.options.timezone?.strict && 'timezone' in task.options) {
                 if (task.options.timezone !== this.options.timezone.type) {
@@ -236,6 +236,7 @@ export class Scheduler extends EventEmitter {
 
             const newTask: CronTask = {
                 ...task,
+                status: 'pending',
                 id: crypto.randomUUID(),
                 options: {
                     ...task.options,
@@ -426,6 +427,8 @@ export class Scheduler extends EventEmitter {
         candidate.setSeconds(0)
         candidate.setMilliseconds(0)
 
+        candidate.setMinutes(candidate.getMinutes() + 1)
+
         const hourFormatter = new Intl.DateTimeFormat('en-US', {
             timeZone: parsed.timezone,
             hour: 'numeric',
@@ -498,64 +501,53 @@ export class Scheduler extends EventEmitter {
      */
     private async tick(): Promise<void> {
         if (!this.running) return
-
+    
         try {
             const now = new Date()
             this.updateStats()
-
+    
             const tasks = this.queue.getAll()
-
+    
             const tasksToRun = tasks.filter((task) => {
-                if (
-                    task.status === 'paused'
-                    || !task.metadata.nextRun
-                    || this.queue.isRunning(task.id)
-                ) {
+                if (task.status === 'paused' || !task.metadata.nextRun || this.queue.isRunning(task.id)) {
                     return false
                 }
-
-                const effectiveTimezone = this.options.timezone?.strict
-                    ? this.options.timezone.type
-                    : (task.options.timezone || this.options.timezone?.type || 'UTC')
-
-                const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions();
-
+    
+                const effectiveTimezone =
+                    this.options.timezone?.strict
+                        ? this.options.timezone.type
+                        : (task.options.timezone || this.options.timezone?.type || 'UTC')
+    
+                const moduleOptions = moduleConfiguration.getModuleOptions()
                 const parsed = CronExpressionParser.parseCronExpression(task.options.expression, {
-                    timezone: {
-                        ...moduleOptions.timezone,
-                        type: effectiveTimezone,
-                    },
+                    timezone: { ...moduleOptions.timezone, type: effectiveTimezone },
                     validateTimezone: this.options.timezone?.validate ?? true,
                 })
-
-                const tzNow = TimezoneUtils.convertTimezone(
-                    now,
-                    'UTC',
-                    parsed.timezone
-                )
-
-                const tzNextRun = TimezoneUtils.convertTimezone(
-                    task.metadata.nextRun,
-                    'UTC',
-                    parsed.timezone
-                )
-
+    
+                const tzNow = TimezoneUtils.convertTimezone(now, 'UTC', parsed.timezone)
+                const tzNextRun = TimezoneUtils.convertTimezone(task.metadata.nextRun, 'UTC', parsed.timezone)
                 if (typeof tzNow === 'string' || typeof tzNextRun === 'string') {
                     throw new Error('Unexpected string return from timezone conversion')
                 }
+    
+                const isDue = tzNextRun.toJSDate() <= tzNow.toJSDate()
 
-                const shouldRun = tzNextRun.toJSDate() <= tzNow.toJSDate()
-                return shouldRun
+                return isDue
             })
-
-
+    
+            // Respect max concurrency
             const currentRunning = tasks.filter(task => task.status === 'running').length
             const available = Math.max(0, this.options.maxConcurrent! - currentRunning)
             const toExecute = tasksToRun.slice(0, available)
 
-            await Promise.all(
-                toExecute.map(task => this.queue.executeTask(task.id))
-            )
+            // Execute due tasks in parallel and wait for completion
+            await Promise.all(toExecute.map(async task => {
+                await this.queue.executeTask(task.id)
+                const executedTask = this.queue.get(task.id)
+                if (executedTask) {
+                    executedTask.metadata.nextRun = this.getNextRunTime(executedTask)
+                }
+            }))
         }
         catch (error: unknown) {
             const wrappedError = this.handleError('Scheduler tick failed', error)
