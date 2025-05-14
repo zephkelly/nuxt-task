@@ -3,8 +3,6 @@ import type { CronTaskOptions } from '../../task/types'
 import CronExpressionParser from '../../expression/parser'
 import type { ModuleOptions } from '../../../module'
 
-import { useRuntimeConfig } from '#build/types/nitro-imports'
-
 
 
 interface TaskContext {

@@ -1,6 +1,5 @@
-import { defu } from 'defu'
 import { type ModuleOptions } from "./../module"
-import type { Nuxt, RuntimeConfig } from 'nuxt/schema';
+import type { RuntimeConfig } from 'nuxt/schema';
 
 export const DEFAULT_MODULE_OPTIONS: ModuleOptions = {
     serverTasks: true,
