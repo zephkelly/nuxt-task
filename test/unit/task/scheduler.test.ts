@@ -1,7 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
-import { defu } from 'defu'
-
 import { Scheduler } from '../../../src/runtime/scheduler'
 import { MemoryStorage } from '../../../src/runtime/storage'
 import type { CronTask, CronTaskEvent } from '../../../src/runtime/task/types'
@@ -273,7 +271,7 @@ describe('Scheduler', () => {
                 })
             
                 // Set initial next run time to now
-                task.metadata.nextRun = new Date()
+                // task.metadata.nextRun = new Date()
                 
                 await scheduler.start()
             
@@ -286,6 +284,8 @@ describe('Scheduler', () => {
                 
                 // Should have executed 3 times
                 expect(executeMock).toHaveBeenCalledTimes(3)
+
+                console.log(executeMock.mock.calls)
                 
                 vi.useRealTimers()
             })
@@ -327,6 +327,8 @@ describe('Scheduler', () => {
                     // Should be approximately 2 minutes (120000ms)
                     expect(interval).toBeCloseTo(120000, -2) // Allow small deviation
                 }
+
+                console.log(executionTimes)
                 
                 vi.useRealTimers()
             })

@@ -8,8 +8,6 @@ describe('basic', async () => {
     beforeAll(() => {
         vi.stubEnv('NODE_ENV', 'test')
 
-        console.log(process.env.NODE_ENV)
-
         vi.mock('#tasks', () => ({
             taskDefinitions: [
                 {
