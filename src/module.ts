@@ -45,11 +45,11 @@ export default defineNuxtModule<ModuleOptions>({
         const runtimeDir = resolve('./runtime')
 
         await setupModuleBasics(moduleOptions, nuxt, runtimeDir)
-        
-        // Support a custom task scheduler or nitro's native implementation
+
         if (moduleOptions.experimental?.tasks) {
             await setupExperimentalTasks(moduleOptions, nuxt)
-        } else {
+        }
+        else {
             await setupCustomTasks(moduleOptions, nuxt)
         }
 
@@ -60,6 +60,7 @@ export default defineNuxtModule<ModuleOptions>({
         }
 
         if (!moduleOptions.experimental?.tasks) {
+            console.log('🔄 Adding custom task scheduler plugin')
             addServerPlugin(resolve('./runtime/plugin'))
         }
     }
@@ -67,11 +68,7 @@ export default defineNuxtModule<ModuleOptions>({
 
 async function setupModuleBasics(moduleOptions: ModuleOptions, nuxt: any, runtimeDir: string) {
     updateRuntimeConfig({
-        nuxtTask: {
-            experimental: {
-                tasks: true
-            }
-        }
+        nuxtTask: moduleOptions
     })
     moduleConfiguration.setModuleOptions(moduleOptions)
     
@@ -140,7 +137,7 @@ function setupNitroBasics(nitroConfig: any, nuxt: any) {
 
     nitroConfig.virtual = nitroConfig.virtual || {}
     nitroConfig.virtual['#nuxt-task/types'] = `export * from '${resolve('./runtime/types')}'`
-    nitroConfig.virtual['#cron-config'] = `export default ${JSON.stringify(nuxt.options.runtimeConfig.cron)}`
+    nitroConfig.virtual['#task-config'] = `export default ${JSON.stringify(nuxt.options.runtimeConfig.cron)}`
 }
 
 
@@ -205,6 +202,8 @@ export async function configureNitroTasks(
 
         const tasks = await scanTasksDirectory(tasksDir)
         const loadedModules = await loadTaskModules(tasks, tasksDir)
+
+        console.log('🔄 Registering Nitro tasks:', loadedModules.map(task => task.name))
 
         const scheduledTasksMap = new Map<string, string[]>()
         

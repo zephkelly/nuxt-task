@@ -15,6 +15,8 @@ export default defineNitroPlugin(async (nitroApp) => {
         return
     }
 
+    console.log('Initializing cron scheduler with options:', moduleOptions)
+
     if (import.meta.test) {
         console.log('Skipping scheduler in test environment')
         return
@@ -40,6 +42,7 @@ export default defineNitroPlugin(async (nitroApp) => {
             return
         }
 
+        console.log('adding tasks')
         for (const task of taskDefinitions) {
             await scheduler.addTask({
                 name: task.meta.name,

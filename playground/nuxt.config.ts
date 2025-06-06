@@ -3,13 +3,12 @@ export default defineNuxtConfig({
     devtools: { enabled: true },
     compatibilityDate: '2025-01-28',
 
-    cron: {
+    nuxtTask: {
         experimental: {
             tasks: true
         },
     },
     
-    // debug: true,
     typescript: {
         strict: true,
     }

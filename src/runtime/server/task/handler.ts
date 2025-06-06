@@ -27,7 +27,15 @@ export interface NuxtCronTaskDefinition<T = any> {
 export function defineTaskHandler<T = any>(
     definition: NuxtCronTaskDefinition<T>
 ) {
-    const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions()
+
+    let config: ModuleOptions | undefined = undefined
+    try {
+        //@ts-ignore
+        config = useRuntimeConfig().nuxtTask as ModuleOptions
+    }
+    catch (error) {
+        config = moduleConfiguration.getModuleOptions()
+    }
 
     const baseTask = {
         meta: {
@@ -38,16 +46,14 @@ export function defineTaskHandler<T = any>(
         options: definition.options || {},
     }
 
-    // If using Nitro's experimental tasks
-    if (moduleOptions?.experimental?.tasks) {
-        console.log('📋 Registered Nitro task:', definition.meta.name)
+    if (config?.experimental?.tasks) {
         return {
             ...baseTask,
             // Return the handler directly for Nitro tasks
             async run({ payload, context }: { payload?: Record<string, any>, context?: Record<string, any> }) {
                 try {
                     CronExpressionParser.parseCronExpression(definition.schedule, {
-                        timezone: moduleOptions.timezone
+                        timezone: config.timezone
                     })
                 }
                 catch (error) {
@@ -58,7 +64,7 @@ export function defineTaskHandler<T = any>(
                     const result = await definition.handler({ 
                         payload, 
                         ...context,
-                        options: moduleOptions
+                        timezone: config.timezone.type
                     })
 
                     return { success: true, result }
@@ -74,14 +80,12 @@ export function defineTaskHandler<T = any>(
         }
     }
 
-    console.log('📋 Registered nuxt-task task:', definition.meta.name)
-
     return {
         ...baseTask,
         async run(context: TaskContext) {
             try {
                 CronExpressionParser.parseCronExpression(definition.schedule, {
-                    timezone: moduleOptions?.timezone
+                    timezone: config?.timezone
                 })
                 return await definition.handler(context)
             }
