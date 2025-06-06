@@ -38,7 +38,7 @@ export type CronTaskOptions<T extends SchedulerOptions = SchedulerOptions> =
 export interface CronTask<T = any> {
     id: TaskId
     name: string
-    execute: () => Promise<T>
+    execute: (args: { name: string, scheduledTime: number, timezone: string }) => Promise<T>
     options: CronTaskOptions
     status: CronTaskStatus
     metadata: CronTaskMetadata

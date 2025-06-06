@@ -124,7 +124,11 @@ export class TaskQueue extends EventEmitter {
 
         try {
             const result = await Promise.race([
-                task.execute(),
+                task.execute({
+                    name: task.name,
+                    scheduledTime: new Date().getTime(),
+                    timezone: task.options.timezone || 'UTC',
+                }),
                 task.options.timeout
                     ? new Promise((_, reject) =>
                         setTimeout(() => reject(new Error('task timeout')), task.options.timeout),

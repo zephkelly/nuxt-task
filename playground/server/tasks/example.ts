@@ -13,7 +13,7 @@ export default defineTaskHandler({
         console.log('Example task executed', ctx)
 
         return {
-            message: 'Example task executed'
+            message: 909178309,
         }
     }
 })

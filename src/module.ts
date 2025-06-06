@@ -60,9 +60,25 @@ export default defineNuxtModule<ModuleOptions>({
         }
 
         if (!moduleOptions.experimental?.tasks) {
-            console.log('🔄 Adding custom task scheduler plugin')
             addServerPlugin(resolve('./runtime/plugin'))
         }
+        
+        nuxt.hook('nitro:build:before', () => {
+            if (nuxt.options.dev) {
+                if (!moduleOptions.experimental?.tasks) {
+                    console.log(
+                        '%c[ NUXT-TASK ]', 'color: black; background-color: rgb(9, 195, 81) font-weight: bold; font-size: 1.15rem;',
+                        '🕒 Registering custom task scheduler'
+                    );
+                }
+                else {
+                    console.log(
+                        '%c[ NUXT-TASK ]', 'color: black; background-color: rgb(9, 195, 81) font-weight: bold; font-size: 1.15rem;',
+                        '🕒 Using native task scheduler'
+                    );
+                }
+            }
+        });
     }
 })
 
@@ -163,7 +179,7 @@ async function generateVirtualTasksModule(tasksDir: string) {
     const tasks = await scanTasksDirectory(tasksDir)
     const loadedModules = await loadTaskModules(tasks, tasksDir)
 
-    console.log('🔄 Registering custom tasks:', loadedModules.map(task => task.name))
+    console.log('🔄 Registering tasks:', loadedModules.map(task => task.name))
 
     return `
         ${loadedModules.map(task => `
@@ -203,7 +219,7 @@ export async function configureNitroTasks(
         const tasks = await scanTasksDirectory(tasksDir)
         const loadedModules = await loadTaskModules(tasks, tasksDir)
 
-        console.log('🔄 Registering Nitro tasks:', loadedModules.map(task => task.name))
+        console.log('🔄 Registering tasks:', loadedModules.map(task => task.name))
 
         const scheduledTasksMap = new Map<string, string[]>()
         

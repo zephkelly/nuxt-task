@@ -50,7 +50,11 @@ export function defineTaskHandler<T = any>(
         return {
             ...baseTask,
             // Return the handler directly for Nitro tasks
-            async run({ payload, context }: { payload?: Record<string, any>, context?: Record<string, any> }) {
+            async run({ name, payload, context }: {
+                name: string,
+                payload?: Record<string, any>,
+                context?: Record<string, any>
+            }) {
                 try {
                     CronExpressionParser.parseCronExpression(definition.schedule, {
                         timezone: config.timezone
@@ -61,9 +65,10 @@ export function defineTaskHandler<T = any>(
                 }
 
                 try {
-                    const result = await definition.handler({ 
-                        payload, 
-                        ...context,
+                    const result = await definition.handler({
+                        name: name,
+                        ...context || {},
+                        ...payload || {},
                         timezone: config.timezone.type
                     })
 
