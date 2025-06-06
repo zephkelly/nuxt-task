@@ -10,8 +10,8 @@ import { useRuntimeConfig } from '#imports'
 export default defineNitroPlugin(async (nitroApp) => {
     const config = useRuntimeConfig()
     const moduleOptions = config.cron || moduleConfiguration.getModuleOptions()
-
     if (moduleOptions.experimental?.tasks) {
+        console.warn('Experimental tasks are enabled, using Nitro\'s native task scheduler.')
         return
     }
 
@@ -30,6 +30,7 @@ export default defineNitroPlugin(async (nitroApp) => {
 
         let taskDefinitions = []
         try {
+            console.log('Loading task definitions from virtual file...')
             //@ts-ignore - we are using a virtual file
             const tasksVirtualFile = await import('#tasks')
             taskDefinitions = tasksVirtualFile.taskDefinitions || []

@@ -1,4 +1,4 @@
-import { defineTaskHandler } from '#nuxt-cron'
+import { defineTaskHandler } from '#nuxt-task'
 
 
 
@@ -8,12 +8,9 @@ export default defineTaskHandler({
         description: 'Example task for testing',
     },
     schedule: '* * * * *',
-    options: {
-        timezone: 'EST'
-    },
     handler: async (ctx) => {
 
-        console.log('Example task executed')
+        console.log('Example task executed', ctx)
 
         return {
             message: 'Example task executed'

@@ -5,11 +5,11 @@ export default defineNuxtConfig({
 
     cron: {
         experimental: {
-            tasks: false
+            tasks: true
         },
     },
     
-    debug: true,
+    // debug: true,
     typescript: {
         strict: true,
     }

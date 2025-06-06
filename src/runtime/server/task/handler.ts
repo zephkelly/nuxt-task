@@ -27,17 +27,8 @@ export interface NuxtCronTaskDefinition<T = any> {
 export function defineTaskHandler<T = any>(
     definition: NuxtCronTaskDefinition<T>
 ) {
-    let moduleOptions: ModuleOptions | undefined = undefined
+    const moduleOptions: ModuleOptions = moduleConfiguration.getModuleOptions()
 
-    try {
-        const runtimeConfig = useRuntimeConfig()
-        moduleOptions = runtimeConfig?.cron
-    }
-    catch(error: unknown) {
-        moduleOptions = moduleConfiguration.getModuleOptions()
-    }
-
-    
     const baseTask = {
         meta: {
             name: definition.meta?.name,
@@ -83,7 +74,7 @@ export function defineTaskHandler<T = any>(
         }
     }
 
-    console.log('📋 Registered nuxt-cron task:', definition.meta.name)
+    console.log('📋 Registered nuxt-task task:', definition.meta.name)
 
     return {
         ...baseTask,
@@ -99,7 +90,7 @@ export function defineTaskHandler<T = any>(
             }
         },
         _custom: {
-            type: 'cron-task',
+            type: 'nuxt-task',
             version: '1.0',
             virtual: true
         }

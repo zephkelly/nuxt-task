@@ -1,4 +1,4 @@
-import { defineNuxtModule, addServerPlugin, createResolver, addImports, addTemplate } from '@nuxt/kit'
+import { defineNuxtModule, addServerPlugin, createResolver, addImports, addTemplate, updateRuntimeConfig } from '@nuxt/kit'
 import { join, resolve } from 'pathe'
 import { constants } from 'fs'
 import { access } from 'fs/promises'
@@ -33,8 +33,8 @@ export type ModuleOptions = BaseModuleOptions & {
 
 export default defineNuxtModule<ModuleOptions>({
     meta: {
-        name: 'nuxt-cron',
-        configKey: 'cron',
+        name: 'nuxt-task',
+        configKey: 'nuxtTask',
         compatibility: {
             nuxt: '^3.10.0 || ^4.0.0',
         },
@@ -59,15 +59,23 @@ export default defineNuxtModule<ModuleOptions>({
             return
         }
 
-        addServerPlugin(resolve('./runtime/plugin'))
+        if (!moduleOptions.experimental?.tasks) {
+            addServerPlugin(resolve('./runtime/plugin'))
+        }
     }
 })
 
 async function setupModuleBasics(moduleOptions: ModuleOptions, nuxt: any, runtimeDir: string) {
-    nuxt.options.runtimeConfig.cron = moduleOptions
+    updateRuntimeConfig({
+        nuxtTask: {
+            experimental: {
+                tasks: true
+            }
+        }
+    })
     moduleConfiguration.setModuleOptions(moduleOptions)
     
-    nuxt.options.alias['#nuxt-cron'] = runtimeDir
+    nuxt.options.alias['#nuxt-task'] = runtimeDir
     nuxt.options.alias['#tasks'] = join(nuxt.options.buildDir, 'tasks.virtual')
     
     addImports([{
@@ -78,9 +86,9 @@ async function setupModuleBasics(moduleOptions: ModuleOptions, nuxt: any, runtim
     }])
 
     addTemplate({
-        filename: 'types/nuxt-cron.d.ts',
+        filename: 'types/nuxt-task.d.ts',
         getContents: () => `
-        declare module '#nuxt-cron' {
+        declare module '#nuxt-task' {
             export * from '${resolve('./runtime/types')}'
             export type { ModuleOptions } from '${resolve('./module')}'
         }`
@@ -88,7 +96,7 @@ async function setupModuleBasics(moduleOptions: ModuleOptions, nuxt: any, runtim
     
     //@ts-ignore - Dont know how to add a type to the reference in this instance
     nuxt.hook('prepare:types', ({ references }) => {
-        references.push({ path: resolve(nuxt.options.buildDir, 'types/nuxt-cron.d.ts') })
+        references.push({ path: resolve(nuxt.options.buildDir, 'types/nuxt-task.d.ts') })
     })
 
     const runtimeDirs = [
@@ -96,6 +104,7 @@ async function setupModuleBasics(moduleOptions: ModuleOptions, nuxt: any, runtim
         resolve('./task'),
         resolve('./server')
     ]
+
     nuxt.options.build = nuxt.options.build || {}
     nuxt.options.build.transpile = nuxt.options.build.transpile || []
     nuxt.options.build.transpile.push(...runtimeDirs)
@@ -127,10 +136,10 @@ function setupNitroBasics(nitroConfig: any, nuxt: any) {
     const { resolve } = createResolver(import.meta.url)
     
     nitroConfig.alias = nitroConfig.alias || {}
-    nitroConfig.alias['#nuxt-cron'] = resolve('./runtime')
+    nitroConfig.alias['#nuxt-task'] = resolve('./runtime')
 
     nitroConfig.virtual = nitroConfig.virtual || {}
-    nitroConfig.virtual['#nuxt-cron/types'] = `export * from '${resolve('./runtime/types')}'`
+    nitroConfig.virtual['#nuxt-task/types'] = `export * from '${resolve('./runtime/types')}'`
     nitroConfig.virtual['#cron-config'] = `export default ${JSON.stringify(nuxt.options.runtimeConfig.cron)}`
 }
 
@@ -164,20 +173,9 @@ async function generateVirtualTasksModule(tasksDir: string) {
             import ${task.name.replace(/[:-]/g, '_')} from '~~/server/tasks/${task.path}'
         `).join('\n')}
 
-        export const tasks = [
+        export const taskDefinitions = [
             ${loadedModules.map(task => task.name.replace(/[:-]/g, '_')).join(',\n')}
         ]
-
-        export const taskDefinitions = tasks.map(task => {
-            return {
-                ...task,
-                _custom: {
-                    type: 'cron-task',
-                    version: '1.0',
-                    virtual: true
-                }
-            }
-        })
     `
 }
 

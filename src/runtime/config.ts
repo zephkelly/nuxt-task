@@ -76,7 +76,7 @@ export class ModuleConfiguration {
         }
 
         if (options.experimental?.tasks && !options.serverTasks) {
-            console.warn('[ nuxt-cron ] Experimental tasks require server tasks to be enabled');
+            console.warn('[ nuxt-task ] Experimental tasks require server tasks to be enabled');
             return false;
         }
         return true;

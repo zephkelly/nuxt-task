@@ -2,7 +2,7 @@ import type { ModuleOptions } from './module'
 
 import type { Scheduler } from './runtime/scheduler'
 
-declare module '#nuxt-cron' {
+declare module '#nuxt-task' {
     export * from './runtime/types'
     export * from './runtime/server/nitro/handler'
     export type { ModuleOptions } from './module'

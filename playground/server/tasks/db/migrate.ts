@@ -1,4 +1,4 @@
-import { defineTaskHandler } from '#nuxt-cron'
+import { defineTaskHandler } from '#nuxt-task'
 
 
 
