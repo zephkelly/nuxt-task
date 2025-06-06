@@ -1,8 +1,8 @@
 {
-  "name": "nuxt-cron",
+  "name": "nuxt-task",
   "version": "1.0.0",
-  "description": "My new Nuxt module",
-  "repository": "your-org/my-module",
+  "description": "A reliable cron job library with nitro task integration",
+  "repository": "https://github.com/zephkelly/nuxt-task",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -34,7 +34,10 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:types": "vue-tsc --noEmit && cd playground && vue-tsc --noEmit"
+    "test:types": "vue-tsc --noEmit && cd playground && vue-tsc --noEmit",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "@nuxt/kit": "^3.15.3",
@@ -62,6 +65,7 @@
     "rollup": "^4.32.1",
     "tslib": "^2.8.1",
     "typescript": "~5.7.3",
+    "vitepress": "^1.6.3",
     "vitest": "^3.0.4",
     "vue-tsc": "^2.2.0"
   },

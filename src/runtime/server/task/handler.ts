@@ -27,17 +27,16 @@ export interface NuxtCronTaskDefinition<T = any> {
 export function defineTaskHandler<T = any>(
     definition: NuxtCronTaskDefinition<T>
 ) {
-    let moduleOptions: ModuleOptions | undefined = undefined
 
+    let config: ModuleOptions | undefined = undefined
     try {
-        const runtimeConfig = useRuntimeConfig()
-        moduleOptions = runtimeConfig?.cron
+        //@ts-ignore
+        config = useRuntimeConfig().nuxtTask as ModuleOptions
     }
-    catch(error: unknown) {
-        moduleOptions = moduleConfiguration.getModuleOptions()
+    catch (error) {
+        config = moduleConfiguration.getModuleOptions()
     }
 
-    
     const baseTask = {
         meta: {
             name: definition.meta?.name,
@@ -47,16 +46,18 @@ export function defineTaskHandler<T = any>(
         options: definition.options || {},
     }
 
-    // If using Nitro's experimental tasks
-    if (moduleOptions?.experimental?.tasks) {
-        console.log('📋 Registered Nitro task:', definition.meta.name)
+    if (config?.experimental?.tasks) {
         return {
             ...baseTask,
             // Return the handler directly for Nitro tasks
-            async run({ payload, context }: { payload?: Record<string, any>, context?: Record<string, any> }) {
+            async run({ name, payload, context }: {
+                name: string,
+                payload?: Record<string, any>,
+                context?: Record<string, any>
+            }) {
                 try {
                     CronExpressionParser.parseCronExpression(definition.schedule, {
-                        timezone: moduleOptions.timezone
+                        timezone: config.timezone
                     })
                 }
                 catch (error) {
@@ -64,10 +65,11 @@ export function defineTaskHandler<T = any>(
                 }
 
                 try {
-                    const result = await definition.handler({ 
-                        payload, 
-                        ...context,
-                        options: moduleOptions
+                    const result = await definition.handler({
+                        name: name,
+                        ...context || {},
+                        ...payload || {},
+                        timezone: config.timezone.type
                     })
 
                     return { success: true, result }
@@ -83,14 +85,12 @@ export function defineTaskHandler<T = any>(
         }
     }
 
-    console.log('📋 Registered nuxt-cron task:', definition.meta.name)
-
     return {
         ...baseTask,
         async run(context: TaskContext) {
             try {
                 CronExpressionParser.parseCronExpression(definition.schedule, {
-                    timezone: moduleOptions?.timezone
+                    timezone: config?.timezone
                 })
                 return await definition.handler(context)
             }
@@ -99,7 +99,7 @@ export function defineTaskHandler<T = any>(
             }
         },
         _custom: {
-            type: 'cron-task',
+            type: 'nuxt-task',
             version: '1.0',
             virtual: true
         }

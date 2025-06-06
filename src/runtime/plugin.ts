@@ -10,8 +10,8 @@ import { useRuntimeConfig } from '#imports'
 export default defineNitroPlugin(async (nitroApp) => {
     const config = useRuntimeConfig()
     const moduleOptions = config.cron || moduleConfiguration.getModuleOptions()
-
     if (moduleOptions.experimental?.tasks) {
+        console.warn('Experimental tasks are enabled, using Nitro\'s native task scheduler.')
         return
     }
 

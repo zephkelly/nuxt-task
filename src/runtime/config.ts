@@ -40,34 +40,6 @@ export class ModuleConfiguration {
         return this.options;
     }
 
-    // public static syncRuntimeConfig(nuxt?: Nuxt | undefined): void {
-    //     let runtimeConfig: RuntimeConfig | undefined = undefined;
-        
-    //     if (nuxt) {
-    //         runtimeConfig = nuxt.options.runtimeConfig as RuntimeConfig;
-    //     }
-    //     else {
-    //         runtimeConfig = useRuntimeConfig();
-    //     }
-        
-    //     if (runtimeConfig === undefined) {
-    //         throw new Error('Runtime config is not defined');
-    //     }
-        
-    //     if (!this.validateModuleOptions(runtimeConfig.cron)) {
-    //         throw new Error('Invalid runtime config');
-    //     }
-
-    //     runtimeConfig.cron = defu(
-    //         runtimeConfig.cron,
-    //         this.defaultModuleOptions
-    //     );
-
-    //     if (nuxt) {
-    //         nuxt.options.runtimeConfig = runtimeConfig;
-    //     } 
-    // }
-
     public static validateModuleOptions(options: ModuleOptions): boolean {
         
         if (!options.timezone?.type) {
@@ -76,7 +48,7 @@ export class ModuleConfiguration {
         }
 
         if (options.experimental?.tasks && !options.serverTasks) {
-            console.warn('[ nuxt-cron ] Experimental tasks require server tasks to be enabled');
+            console.warn('[ nuxt-task ] Experimental tasks require server tasks to be enabled');
             return false;
         }
         return true;

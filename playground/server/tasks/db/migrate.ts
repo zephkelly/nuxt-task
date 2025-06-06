@@ -1,8 +1,11 @@
-import { defineTaskHandler } from '#nuxt-cron'
+import { defineTaskHandler } from '#nuxt-task'
 
 
 
 export default defineTaskHandler({
+    options: {
+        timezone: 'UTC'
+    },
     meta: {
         name: 'migrate',
         description: 'Example task for testing',

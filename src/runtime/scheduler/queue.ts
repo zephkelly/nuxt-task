@@ -19,9 +19,6 @@ export class TaskQueue extends EventEmitter {
     /** Set of currently running task IDs */
     private running: Set<TaskId>
 
-    /**
-     * Creates a new TaskQueue instance
-     */
     constructor() {
         super()
         this.queue = new Map()
@@ -112,7 +109,9 @@ export class TaskQueue extends EventEmitter {
         }
 
         // Calculate total allowed attempts (initial + retries)
-        const maxAttempts = task.options.maxRetries ? task.options.maxRetries + 1 : -1
+        const maxAttempts = task.options.maxRetries ? 
+            (task.options.maxRetries === 0) ? 0 : task.options.maxRetries + 1
+            : -1
 
         // Skip if we've reached max attempts
         if (maxAttempts !== -1 && task.metadata.runCount >= maxAttempts) {
@@ -125,7 +124,11 @@ export class TaskQueue extends EventEmitter {
 
         try {
             const result = await Promise.race([
-                task.execute(),
+                task.execute({
+                    name: task.name,
+                    scheduledTime: new Date().getTime(),
+                    timezone: task.options.timezone || 'UTC',
+                }),
                 task.options.timeout
                     ? new Promise((_, reject) =>
                         setTimeout(() => reject(new Error('task timeout')), task.options.timeout),
@@ -159,7 +162,7 @@ export class TaskQueue extends EventEmitter {
             this.running.delete(taskId)
         }
     }
-    
+
     /**
      * Pauses a task
      * 

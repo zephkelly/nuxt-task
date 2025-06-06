@@ -7,6 +7,11 @@ export type TaskModule = {
                 description?: string;
             };
             schedule?: string;
+            _custom?: {
+                type: string;
+                version: string;
+                virtual?: boolean;
+            };
         };
     };
 }
