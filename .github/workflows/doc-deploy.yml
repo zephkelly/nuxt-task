@@ -47,6 +47,9 @@ jobs:
       - name: Install dependencies
         run: npx nypm@latest i
       
+      - name: Playground prepare
+        run: npm run dev:prepare
+      
       - name: Build with VitePress
         run: npm run docs:build
       
