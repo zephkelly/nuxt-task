@@ -1,5 +1,5 @@
 {
-  "private": true,
-  "name": "nitro-tasks",
-  "type": "module"
+    "private": true,
+    "name": "nitro-tasks",
+    "type": "module"
 }

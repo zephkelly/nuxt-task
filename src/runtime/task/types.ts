@@ -1,53 +1,60 @@
 import type { SchedulerOptions } from '../scheduler/types'
 
-
-
 export type TaskId = string
 
 export interface CronTaskMetadata {
-    lastRun?: Date
-    nextRun?: Date
-    lastError?: Error
-    runCount: number
-    createdAt: Date
-    updatedAt: Date
+  lastRun?: Date
+  nextRun?: Date
+  lastError?: Error
+  runCount: number
+  createdAt: Date
+  updatedAt: Date
 }
 
-export type CronTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused'
+export type CronTaskStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'paused'
 
 interface BaseCronTaskOptions {
-    expression: string
-    maxRetries?: number
-    retryDelay?: number
-    timeout?: number
-    exclusive?: boolean
-    catchUp?: boolean
+  expression: string
+  maxRetries?: number
+  retryDelay?: number
+  timeout?: number
+  exclusive?: boolean
+  catchUp?: boolean
 }
 
 export interface FlexibleCronTaskOptions extends BaseCronTaskOptions {
-    timezone?: string
+  timezone?: string
 }
 
 export type StrictCronTaskOptions = BaseCronTaskOptions
 
 export type CronTaskOptions<T extends SchedulerOptions = SchedulerOptions> =
     T['timezone'] extends { strict: true }
-    ? StrictCronTaskOptions
-    : FlexibleCronTaskOptions
+      ? StrictCronTaskOptions
+      : FlexibleCronTaskOptions
 
 export interface CronTask<T = any> {
-    id: TaskId
+  id: TaskId
+  name: string
+  execute: (args: {
     name: string
-    execute: (args: { name: string, scheduledTime: number, timezone: string }) => Promise<T>
-    options: CronTaskOptions
-    status: CronTaskStatus
-    metadata: CronTaskMetadata
+    scheduledTime: number
+    timezone: string
+  }) => Promise<T>
+  options: CronTaskOptions
+  status: CronTaskStatus
+  metadata: CronTaskMetadata
 }
 
 export type CronTaskEvent =
-    | { type: 'started', task: CronTask }
-    | { type: 'completed', task: CronTask, result: any }
-    | { type: 'failed', task: CronTask, error: Error }
-    | { type: 'retry', task: CronTask, attempt: number }
-    | { type: 'paused', task: CronTask }
-    | { type: 'resumed', task: CronTask }
+  | { type: 'started', task: CronTask }
+  | { type: 'completed', task: CronTask, result: any }
+  | { type: 'failed', task: CronTask, error: Error }
+  | { type: 'retry', task: CronTask, attempt: number }
+  | { type: 'paused', task: CronTask }
+  | { type: 'resumed', task: CronTask }
