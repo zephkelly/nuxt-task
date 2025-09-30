@@ -42,7 +42,8 @@
     "dependencies": {
         "@nuxt/kit": "^3.19.2",
         "defu": "^6.1.4",
-        "luxon": "^3.7.2"
+        "luxon": "^3.7.2",
+        "pathe": "^2.0.3"
     },
     "devDependencies": {
         "@nuxt/devtools": "^1.7.0",
