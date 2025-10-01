@@ -4,9 +4,7 @@ import {
     defineNuxtModule,
     addServerPlugin,
     createResolver,
-    addImports,
     addServerImports,
-    addTemplate,
     updateRuntimeConfig,
 } from "@nuxt/kit";
 import { join, resolve } from "pathe";
@@ -55,9 +53,9 @@ export default defineNuxtModule<ModuleOptions>({
         await setupModuleBasics(moduleOptions, nuxt, resolver);
 
         if (moduleOptions.experimental?.tasks) {
-            await setupExperimentalTasks(moduleOptions, nuxt);
+            await setupExperimentalTasks(moduleOptions, nuxt, resolver);
         } else {
-            await setupCustomTasks(moduleOptions, nuxt);
+            await setupCustomTasks(moduleOptions, nuxt, resolver);
         }
 
         if (import.meta.test) {
@@ -101,46 +99,39 @@ async function setupModuleBasics(
     });
     moduleConfiguration.setModuleOptions(moduleOptions);
 
-    // Use absolute path and match the pattern that works in nuxt-frogger
+    // Set up aliases
     const runtimePath = resolver.resolve("./runtime");
-    
-    // Set up the alias with a subpath pattern
-    nuxt.options.alias["#nuxt-task/imports"] = runtimePath;
+    nuxt.options.alias["#nuxt-task"] = runtimePath;
     nuxt.options.alias["#tasks"] = join(nuxt.options.buildDir, "tasks.virtual");
 
+    // Add server imports with .js extension for ESM compatibility
+    // The resolver will point to the correct file whether in dev (TS) or built (JS)
+    const handlerPath = resolver.resolve("./runtime/server/task/handler.js");
+    
     addServerImports([
         {
             name: "defineTaskHandler",
             as: "defineTaskHandler",
-            from: resolver.resolve("./runtime/server/task/handler"),
+            from: handlerPath,
         },
     ]);
 
-    // @ts-ignore - Dont know how to add a type to the reference in this instance
+    // @ts-ignore
     nuxt.hook("prepare:types", ({ references }) => {
         references.push({
             path: resolve(nuxt.options.buildDir, "types/nuxt-task.d.ts"),
         });
     });
 
-    const runtimeDirs = [
-        runtimePath,
-        resolver.resolve("./runtime/task"),
-        resolver.resolve("./runtime/server/task/handler"),
-    ];
-
+    // Transpile configuration
     nuxt.options.build = nuxt.options.build || {};
     nuxt.options.build.transpile = nuxt.options.build.transpile || [];
-    nuxt.options.build.transpile.push(...runtimeDirs);
-    
-    // Also add the module itself to transpile
-    nuxt.options.build.transpile.push('nuxt-task');
+    nuxt.options.build.transpile.push("nuxt-task");
 }
 
-async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any) {
+async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
-        const resolver = createResolver(import.meta.url);
-        setupNitroBasics(nitroConfig, nuxt, resolver);
+        setupNitroBasics(nitroConfig, resolver);
 
         nitroConfig.experimental = nitroConfig.experimental || {};
         nitroConfig.experimental.tasks = true;
@@ -149,27 +140,23 @@ async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any) {
     });
 }
 
-async function setupCustomTasks(moduleOptions: ModuleOptions, nuxt: any) {
+async function setupCustomTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
-        const resolver = createResolver(import.meta.url);
-        setupNitroBasics(nitroConfig, nuxt, resolver);
+        setupNitroBasics(nitroConfig, resolver);
         await setupVirtualTasksModule(nuxt, nitroConfig);
     });
 }
 
-function setupNitroBasics(nitroConfig: any, nuxt: any, resolver: any) {
-    // Use absolute path consistently
+function setupNitroBasics(nitroConfig: any, resolver: any) {
+    // Use absolute path with .js extension for Nitro
     const runtimePath = resolver.resolve("./runtime");
-    const typesPath = resolver.resolve("./runtime/types");
+    const typesPath = resolver.resolve("./runtime/types.js");
 
     nitroConfig.alias = nitroConfig.alias || {};
-    nitroConfig.alias["#nuxt-task/server"] = runtimePath;
+    nitroConfig.alias["#nuxt-task"] = runtimePath;
 
     nitroConfig.virtual = nitroConfig.virtual || {};
     nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
-    nitroConfig.virtual["#task-config"] = `export default ${JSON.stringify(
-        nuxt.options.runtimeConfig.cron
-    )}`;
 }
 
 async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
@@ -199,17 +186,15 @@ async function generateVirtualTasksModule(tasksDir: string) {
 
     return `
         ${loadedModules
-            .map(
-                (task) => {
-                    // Ensure path has extension and use absolute path
-                    const taskPath = join(tasksDir, task.path);
-                    const pathWithExt = taskPath.endsWith('.ts') || taskPath.endsWith('.js') 
-                        ? taskPath 
-                        : `${taskPath}.ts`;
-                    
-                    return `import ${task.name.replace(/[:-]/g, "_")} from '${pathWithExt}'`;
-                }
-            )
+            .map((task) => {
+                // Ensure path has extension and use absolute path
+                const taskPath = join(tasksDir, task.path);
+                const pathWithExt = taskPath.endsWith('.ts') || taskPath.endsWith('.js') 
+                    ? taskPath 
+                    : `${taskPath}.ts`;
+                
+                return `import ${task.name.replace(/[:-]/g, "_")} from '${pathWithExt}'`;
+            })
             .join("\n")}
 
         export const taskDefinitions = [
