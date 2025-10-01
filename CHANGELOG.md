@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.3
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.2...v1.0.3)
+
+### 🩹 Fixes
+
+- Add runtime server task handler import to template definition ([5887ab5](https://github.com/zephkelly/nuxt-task/commit/5887ab5))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.2
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.1...v1.0.2)
