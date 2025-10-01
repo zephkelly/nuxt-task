@@ -108,7 +108,7 @@ async function setupModuleBasics(
         {
             name: "defineTaskHandler",
             as: "defineTaskHandler",
-            from: resolver.resolve("./server/task/handler"),
+            from: resolver.resolve("./runtime/server/task/handler"),
             priority: 20,
         },
     ]);
@@ -122,8 +122,8 @@ async function setupModuleBasics(
 
     const runtimeDirs = [
         resolver.resolve("./runtime"),
-        resolver.resolve("./task"),
-        resolver.resolve("./server/task/handler"),
+        resolver.resolve("./runtime/task"),
+        resolver.resolve("./runtime/server/task/handler"),
     ];
 
     nuxt.options.build = nuxt.options.build || {};
