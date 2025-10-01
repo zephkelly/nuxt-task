@@ -5,6 +5,7 @@ import {
     addServerPlugin,
     createResolver,
     addImports,
+    addServerImports,
     addTemplate,
     updateRuntimeConfig,
 } from "@nuxt/kit";
@@ -51,7 +52,7 @@ export default defineNuxtModule<ModuleOptions>({
     async setup(moduleOptions, nuxt) {
         const resolver = createResolver(import.meta.url);
 
-        await setupModuleBasics(moduleOptions, nuxt);
+        await setupModuleBasics(moduleOptions, nuxt, resolver);
 
         if (moduleOptions.experimental?.tasks) {
             await setupExperimentalTasks(moduleOptions, nuxt);
@@ -93,18 +94,21 @@ export default defineNuxtModule<ModuleOptions>({
 async function setupModuleBasics(
     moduleOptions: ModuleOptions,
     nuxt: any,
+    resolver: any
 ) {
-    const resolver = createResolver(import.meta.url);
-
     updateRuntimeConfig({
         nuxtTask: moduleOptions,
     });
     moduleConfiguration.setModuleOptions(moduleOptions);
 
-    nuxt.options.alias["#nuxt-task"] = resolver.resolve("./runtime");
+    // Use absolute path and match the pattern that works in nuxt-frogger
+    const runtimePath = resolver.resolve("./runtime");
+    
+    // Set up the alias with a subpath pattern
+    nuxt.options.alias["#nuxt-task"] = runtimePath;
     nuxt.options.alias["#tasks"] = join(nuxt.options.buildDir, "tasks.virtual");
 
-    addImports([
+    addServerImports([
         {
             name: "defineTaskHandler",
             as: "defineTaskHandler",
@@ -121,7 +125,7 @@ async function setupModuleBasics(
     });
 
     const runtimeDirs = [
-        resolver.resolve("./runtime"),
+        runtimePath,
         resolver.resolve("./runtime/task"),
         resolver.resolve("./runtime/server/task/handler"),
     ];
@@ -129,11 +133,15 @@ async function setupModuleBasics(
     nuxt.options.build = nuxt.options.build || {};
     nuxt.options.build.transpile = nuxt.options.build.transpile || [];
     nuxt.options.build.transpile.push(...runtimeDirs);
+    
+    // Also add the module itself to transpile
+    nuxt.options.build.transpile.push('nuxt-task');
 }
 
 async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
-        setupNitroBasics(nitroConfig, nuxt);
+        const resolver = createResolver(import.meta.url);
+        setupNitroBasics(nitroConfig, nuxt, resolver);
 
         nitroConfig.experimental = nitroConfig.experimental || {};
         nitroConfig.experimental.tasks = true;
@@ -144,21 +152,22 @@ async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any) {
 
 async function setupCustomTasks(moduleOptions: ModuleOptions, nuxt: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
-        setupNitroBasics(nitroConfig, nuxt);
+        const resolver = createResolver(import.meta.url);
+        setupNitroBasics(nitroConfig, nuxt, resolver);
         await setupVirtualTasksModule(nuxt, nitroConfig);
     });
 }
 
-function setupNitroBasics(nitroConfig: any, nuxt: any) {
-    const { resolve } = createResolver(import.meta.url);
+function setupNitroBasics(nitroConfig: any, nuxt: any, resolver: any) {
+    // Use absolute path consistently
+    const runtimePath = resolver.resolve("./runtime");
+    const typesPath = resolver.resolve("./runtime/types");
 
     nitroConfig.alias = nitroConfig.alias || {};
-    nitroConfig.alias["#nuxt-task"] = resolve("./runtime");
+    nitroConfig.alias["#nuxt-task"] = runtimePath;
 
     nitroConfig.virtual = nitroConfig.virtual || {};
-    nitroConfig.virtual["#nuxt-task/types"] = `export * from '${resolve(
-        "./runtime/types"
-    )}'`;
+    nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
     nitroConfig.virtual["#task-config"] = `export default ${JSON.stringify(
         nuxt.options.runtimeConfig.cron
     )}`;
