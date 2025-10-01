@@ -108,7 +108,7 @@ async function setupModuleBasics(
         {
             name: "defineTaskHandler",
             as: "defineTaskHandler",
-            from: join(runtimeDir, "server/handler"),
+            from: join(runtimeDir, "server/task/handler"),
             priority: 20,
         },
     ]);
