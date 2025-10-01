@@ -10,7 +10,11 @@
             "types": "./dist/types.d.ts",
             "import": "./dist/module.mjs"
         },
-        "./runtime/*": "./dist/runtime/*"
+        "./runtime/*": "./dist/runtime/*",
+        "./handler": {
+            "types": "./dist/runtime/server/task/handler.d.ts",
+            "import": "./dist/runtime/server/task/handler.js"
+        }
     },
     "typesVersions": {
         "*": {
@@ -19,7 +23,7 @@
             ]
         }
     },
-    "main": "./dist/module.cjs",
+    "main": "./dist/module.mjs",
     "types": "./dist/types.d.ts",
     "files": [
         "dist"

@@ -104,17 +104,9 @@ async function setupModuleBasics(
     nuxt.options.alias["#nuxt-task"] = runtimePath;
     nuxt.options.alias["#tasks"] = join(nuxt.options.buildDir, "tasks.virtual");
 
-    // Add server imports with .js extension for ESM compatibility
-    // The resolver will point to the correct file whether in dev (TS) or built (JS)
-    const handlerPath = resolver.resolve("./runtime/server/task/handler.js");
-    
-    addServerImports([
-        {
-            name: "defineTaskHandler",
-            as: "defineTaskHandler",
-            from: handlerPath,
-        },
-    ]);
+    // NOTE: Auto-imports don't work during task loading (which happens during Nitro config)
+    // Users must explicitly import: import { defineTaskHandler } from "nuxt-task/handler"
+    // This is properly exported in package.json
 
     // @ts-ignore
     nuxt.hook("prepare:types", ({ references }) => {
