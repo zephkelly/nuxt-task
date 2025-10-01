@@ -1,6 +1,6 @@
 {
     "name": "nuxt-task",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "description": "A reliable cron job library with nitro task integration",
     "repository": "https://github.com/zephkelly/nuxt-task",
     "license": "MIT",

@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.7
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.6...v1.0.7)
+
+### 🩹 Fixes
+
+- Try to fix auto imports for server ([a4e3778](https://github.com/zephkelly/nuxt-task/commit/a4e3778))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.6
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.5...v1.0.6)
