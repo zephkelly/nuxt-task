@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.5
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.4...v1.0.5)
+
+### 🩹 Fixes
+
+- Broken import paths for defineTaskHandler ([14872f2](https://github.com/zephkelly/nuxt-task/commit/14872f2))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.4
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.3...v1.0.4)
