@@ -3,12 +3,12 @@ import type { CronTaskOptions } from "../../task/types";
 import CronExpressionParser from "../../expression/parser";
 import type { ModuleOptions } from "../../../module";
 
-interface TaskContext {
+export interface TaskContext {
     payload?: Record<string, any>;
     [key: string]: any;
 }
 
-interface TaskMeta {
+export interface TaskMeta {
     name: string;
     description?: string;
 }

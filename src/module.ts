@@ -49,10 +49,9 @@ export default defineNuxtModule<ModuleOptions>({
     },
     defaults: DEFAULT_MODULE_OPTIONS,
     async setup(moduleOptions, nuxt) {
-        const { resolve } = createResolver(import.meta.url);
-        const runtimeDir = resolve("./runtime");
+        const resolver = createResolver(import.meta.url);
 
-        await setupModuleBasics(moduleOptions, nuxt, runtimeDir);
+        await setupModuleBasics(moduleOptions, nuxt);
 
         if (moduleOptions.experimental?.tasks) {
             await setupExperimentalTasks(moduleOptions, nuxt);
@@ -68,7 +67,7 @@ export default defineNuxtModule<ModuleOptions>({
         }
 
         if (!moduleOptions.experimental?.tasks) {
-            addServerPlugin(resolve("./runtime/plugin"));
+            addServerPlugin(resolver.resolve("./runtime/plugin"));
         }
 
         nuxt.hook("nitro:build:before", () => {
@@ -94,34 +93,25 @@ export default defineNuxtModule<ModuleOptions>({
 async function setupModuleBasics(
     moduleOptions: ModuleOptions,
     nuxt: any,
-    runtimeDir: string
 ) {
+    const resolver = createResolver(import.meta.url);
+
     updateRuntimeConfig({
         nuxtTask: moduleOptions,
     });
     moduleConfiguration.setModuleOptions(moduleOptions);
 
-    nuxt.options.alias["#nuxt-task"] = runtimeDir;
+    nuxt.options.alias["#nuxt-task"] = resolver.resolve("./runtime");
     nuxt.options.alias["#tasks"] = join(nuxt.options.buildDir, "tasks.virtual");
 
     addImports([
         {
             name: "defineTaskHandler",
             as: "defineTaskHandler",
-            from: join(runtimeDir, "server/task/handler"),
+            from: resolver.resolve("./server/task/handler"),
             priority: 20,
         },
     ]);
-
-    addTemplate({
-        filename: "types/nuxt-task.d.ts",
-        getContents: () => `
-        declare module '#nuxt-task' {
-            export * from '${resolve("./runtime/types")}'
-            export * from '${resolve("./runtime/server/task/handler")}'
-            export type { ModuleOptions } from '${resolve("./module")}'
-        }`,
-    });
 
     // @ts-ignore - Dont know how to add a type to the reference in this instance
     nuxt.hook("prepare:types", ({ references }) => {
@@ -131,9 +121,9 @@ async function setupModuleBasics(
     });
 
     const runtimeDirs = [
-        resolve("./runtime"),
-        resolve("./task"),
-        resolve("./server"),
+        resolver.resolve("./runtime"),
+        resolver.resolve("./task"),
+        resolver.resolve("./server/task/handler"),
     ];
 
     nuxt.options.build = nuxt.options.build || {};
