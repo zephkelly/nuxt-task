@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.6
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.5...v1.0.6)
+
+### 🏡 Chore
+
+- Add defineTaskHandler to server imports ([0b566bc](https://github.com/zephkelly/nuxt-task/commit/0b566bc))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.5
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.4...v1.0.5)
