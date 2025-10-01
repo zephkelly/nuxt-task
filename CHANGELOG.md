@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.8
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.7...v1.0.8)
+
+### 🏡 Chore
+
+- Try and adjust import to include .js extension ([9388b6a](https://github.com/zephkelly/nuxt-task/commit/9388b6a))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.7
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.6...v1.0.7)
