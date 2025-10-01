@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.2
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.1...v1.0.2)
+
+### 🩹 Fixes
+
+- Import path of task handler was incorrect ([e10983c](https://github.com/zephkelly/nuxt-task/commit/e10983c))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.1
 
 
