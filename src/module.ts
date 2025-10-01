@@ -118,6 +118,7 @@ async function setupModuleBasics(
         getContents: () => `
         declare module '#nuxt-task' {
             export * from '${resolve("./runtime/types")}'
+            export * from '${resolve("./runtime/server/task/handler")}'
             export type { ModuleOptions } from '${resolve("./module")}'
         }`,
     });
