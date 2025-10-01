@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.0.4
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.3...v1.0.4)
+
+### 🏡 Chore
+
+- Try changing import method for task handler ([fbfe119](https://github.com/zephkelly/nuxt-task/commit/fbfe119))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.3
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.2...v1.0.3)
