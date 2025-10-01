@@ -105,7 +105,7 @@ async function setupModuleBasics(
     const runtimePath = resolver.resolve("./runtime");
     
     // Set up the alias with a subpath pattern
-    nuxt.options.alias["#nuxt-task"] = runtimePath;
+    nuxt.options.alias["#nuxt-task/imports"] = runtimePath;
     nuxt.options.alias["#tasks"] = join(nuxt.options.buildDir, "tasks.virtual");
 
     addServerImports([
@@ -113,7 +113,6 @@ async function setupModuleBasics(
             name: "defineTaskHandler",
             as: "defineTaskHandler",
             from: resolver.resolve("./runtime/server/task/handler"),
-            priority: 20,
         },
     ]);
 
@@ -164,7 +163,7 @@ function setupNitroBasics(nitroConfig: any, nuxt: any, resolver: any) {
     const typesPath = resolver.resolve("./runtime/types");
 
     nitroConfig.alias = nitroConfig.alias || {};
-    nitroConfig.alias["#nuxt-task"] = runtimePath;
+    nitroConfig.alias["#nuxt-task/server"] = runtimePath;
 
     nitroConfig.virtual = nitroConfig.virtual || {};
     nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
@@ -201,11 +200,15 @@ async function generateVirtualTasksModule(tasksDir: string) {
     return `
         ${loadedModules
             .map(
-                (task) => `
-            import ${task.name.replace(/[:-]/g, "_")} from '~~/server/tasks/${
-                    task.path
-                }'
-        `
+                (task) => {
+                    // Ensure path has extension and use absolute path
+                    const taskPath = join(tasksDir, task.path);
+                    const pathWithExt = taskPath.endsWith('.ts') || taskPath.endsWith('.js') 
+                        ? taskPath 
+                        : `${taskPath}.ts`;
+                    
+                    return `import ${task.name.replace(/[:-]/g, "_")} from '${pathWithExt}'`;
+                }
             )
             .join("\n")}
 
@@ -250,10 +253,17 @@ export async function configureNitroTasks(
         const scheduledTasksMap = new Map<string, string[]>();
 
         for (const taskModule of loadedModules) {
+            // Ensure path has extension
+            const taskPath = taskModule.path.endsWith('.ts') || taskModule.path.endsWith('.js')
+                ? taskModule.path
+                : `${taskModule.path}.ts`;
+            
+            const fullTaskPath = join(tasksDir, taskPath);
+            
             nitroConfig.tasks[taskModule.name] = {
                 name: taskModule.name,
                 description: taskModule.module.default.meta.description || "",
-                handler: `~/server/tasks/${taskModule.path}`,
+                handler: fullTaskPath,
             };
 
             if (taskModule.module.default.schedule) {
@@ -266,7 +276,7 @@ export async function configureNitroTasks(
             // Register tasks as Nitro handlers
             nitroConfig.handlers[`/_nitro/tasks/${taskModule.name}`] = {
                 method: "post",
-                handler: `~/server/tasks/${taskModule.path}`,
+                handler: fullTaskPath,
             };
         }
 
