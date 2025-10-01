@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.1.0
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.8...v1.1.0)
+
+### 🚀 Enhancements
+
+- Add import definitions to package.json ([271a381](https://github.com/zephkelly/nuxt-task/commit/271a381))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.0.8
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.7...v1.0.8)
