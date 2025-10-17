@@ -60,7 +60,7 @@ export default defineNuxtModule<ModuleOptions>({
 
         if (import.meta.test) {
             console.log(
-                "Skipping customer scheduler plugin in test environment"
+                "Skipping custom scheduler plugin in test environment"
             );
             return;
         }
@@ -70,6 +70,10 @@ export default defineNuxtModule<ModuleOptions>({
         }
 
         nuxt.hook("nitro:build:before", () => {
+            if (nuxt.options._prepare || nuxt.options._start) {
+                return;
+            }
+
             if (nuxt.options.dev) {
                 if (!moduleOptions.experimental?.tasks) {
                     console.log(
@@ -181,18 +185,18 @@ async function generateVirtualTasksModule(tasksDir: string) {
             .map((task) => {
                 // Ensure path has extension and use absolute path
                 const taskPath = join(tasksDir, task.path);
-                const pathWithExt = taskPath.endsWith('.ts') || taskPath.endsWith('.js') 
-                    ? taskPath 
+                const pathWithExt = taskPath.endsWith('.ts') || taskPath.endsWith('.js')
+                    ? taskPath
                     : `${taskPath}.ts`;
-                
+
                 return `import ${task.name.replace(/[:-]/g, "_")} from '${pathWithExt}'`;
             })
             .join("\n")}
 
         export const taskDefinitions = [
             ${loadedModules
-                .map((task) => task.name.replace(/[:-]/g, "_"))
-                .join(",\n")}
+            .map((task) => task.name.replace(/[:-]/g, "_"))
+            .join(",\n")}
         ]
     `;
 }
@@ -234,9 +238,9 @@ export async function configureNitroTasks(
             const taskPath = taskModule.path.endsWith('.ts') || taskModule.path.endsWith('.js')
                 ? taskModule.path
                 : `${taskModule.path}.ts`;
-            
+
             const fullTaskPath = join(tasksDir, taskPath);
-            
+
             nitroConfig.tasks[taskModule.name] = {
                 name: taskModule.name,
                 description: taskModule.module.default.meta.description || "",
