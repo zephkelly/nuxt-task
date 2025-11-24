@@ -1,6 +1,26 @@
 # Changelog
 
 
+## v1.2.2
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.0...v1.2.2)
+
+### 🏡 Chore
+
+- Expand test code coverage in task handler ([1eba7f3](https://github.com/zephkelly/nuxt-task/commit/1eba7f3))
+- **release:** V1.2.0 ([a92f323](https://github.com/zephkelly/nuxt-task/commit/a92f323))
+- Merge changes with remote ([11db7ef](https://github.com/zephkelly/nuxt-task/commit/11db7ef))
+- Remove comments in bundleTasks ([fee76fd](https://github.com/zephkelly/nuxt-task/commit/fee76fd))
+
+### ✅ Tests
+
+- Add test converage for server plugin ([2be230a](https://github.com/zephkelly/nuxt-task/commit/2be230a))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+- Ekelly <masterevank@gmail.com>
+
 ## v1.2.0
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.1.0...v1.2.0)
