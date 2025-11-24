@@ -5,6 +5,7 @@ import type { ModuleOptions } from "../../../module";
 
 export interface TaskContext {
     payload?: Record<string, any>;
+    context?: Record<string, any>;
     [key: string]: any;
 }
 
@@ -51,9 +52,10 @@ export function defineTaskHandler<T = any>(
                 payload,
                 context,
             }: {
-                name: string;
+                name?: string;
                 payload?: Record<string, any>;
                 context?: Record<string, any>;
+                [key: string]: any;
             }) {
                 try {
                     CronExpressionParser.parseCronExpression(
@@ -64,8 +66,7 @@ export function defineTaskHandler<T = any>(
                     );
                 } catch (error) {
                     throw new Error(
-                        `Invalid cron expression in task definition: ${
-                            (error as Error).message
+                        `Invalid cron expression in task definition: ${(error as Error).message
                         }`
                     );
                 }
@@ -78,7 +79,7 @@ export function defineTaskHandler<T = any>(
                         timezone: config.timezone.type,
                     });
 
-                    return { success: true, result };
+                    return { success: true, ...result };
                 } catch (error) {
                     console.error(
                         `Task execution failed: ${(error as Error).message}`
@@ -102,8 +103,13 @@ export function defineTaskHandler<T = any>(
                 CronExpressionParser.parseCronExpression(definition.schedule, {
                     timezone: config?.timezone,
                 });
-                return await definition.handler(context);
-            } catch (error) {
+                const result = await definition.handler(context);
+                return {
+                    success: true,
+                    ...result
+                }
+            }
+            catch (error) {
                 throw error instanceof Error
                     ? error
                     : new Error("Unknown error in task execution");
