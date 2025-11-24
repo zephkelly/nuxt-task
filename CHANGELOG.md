@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.2.0
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.1.0...v1.2.0)
+
+### 🚀 Enhancements
+
+- Add task bundler with esbuild rollup plugin ([c1394a2](https://github.com/zephkelly/nuxt-task/commit/c1394a2))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.1.0
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.0.8...v1.1.0)
