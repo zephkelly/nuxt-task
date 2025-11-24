@@ -13,6 +13,7 @@ import { moduleConfiguration, DEFAULT_MODULE_OPTIONS } from "./runtime/config";
 
 import { scanTasksDirectory } from "./runtime/utils/scanTasks";
 import { loadTaskModules } from "./runtime/utils/loadTasks";
+import { bundleTaskFiles } from "./runtime/utils/bundleTasks";
 
 import type {
     FlexibleTimezoneOptions,
@@ -169,31 +170,39 @@ async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
 
 async function generateVirtualTasksModule(tasksDir: string) {
     const tasks = await scanTasksDirectory(tasksDir);
-    const loadedModules = await loadTaskModules(tasks, tasksDir);
+    const bundledTasks = await bundleTaskFiles(tasks, tasksDir);
 
     console.log(
         "🔄 Registering tasks:",
-        loadedModules.map((task) => task.name)
+        bundledTasks.map((task) => task.name)
     );
 
-    return `
-        ${loadedModules
-            .map((task) => {
-                // Ensure path has extension and use absolute path
-                const taskPath = join(tasksDir, task.path);
-                const pathWithExt = taskPath.endsWith('.ts') || taskPath.endsWith('.js') 
-                    ? taskPath 
-                    : `${taskPath}.ts`;
-                
-                return `import ${task.name.replace(/[:-]/g, "_")} from '${pathWithExt}'`;
-            })
-            .join("\n")}
+    // Generate virtual module with inlined bundled code
+    // Since Rollup generates ESM with 'export default', we need to transform it
+    // to extract the default export into a const variable
+    const taskModules = bundledTasks
+        .map((task) => {
+            const variableName = task.name.replace(/[:-]/g, "_");
 
-        export const taskDefinitions = [
-            ${loadedModules
-                .map((task) => task.name.replace(/[:-]/g, "_"))
-                .join(",\n")}
-        ]
+            // Transform 'export default' to a variable assignment
+            // This regex finds 'export default' and replaces it with 'const variableName ='
+            let transformedCode = task.code.replace(
+                /export\s+default\s+/,
+                `const ${variableName} = `
+            );
+
+            return `// Task: ${task.name}\n${transformedCode}`;
+        })
+        .join("\n\n");
+
+    return `
+${taskModules}
+
+export const taskDefinitions = [
+    ${bundledTasks
+        .map((task) => task.name.replace(/[:-]/g, "_"))
+        .join(",\n    ")}
+];
     `;
 }
 
