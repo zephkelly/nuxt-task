@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.2.4
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.3...v1.2.4)
+
+### 🩹 Fixes
+
+- LoadTask causing bundling issues with deps in tasks ([e3bfd4b](https://github.com/zephkelly/nuxt-task/commit/e3bfd4b))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.2.3
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.2...v1.2.3)
