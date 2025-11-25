@@ -12,7 +12,6 @@ import { join, resolve } from "pathe";
 import { moduleConfiguration, DEFAULT_MODULE_OPTIONS } from "./runtime/config";
 
 import { scanTasksDirectory } from "./runtime/utils/scanTasks";
-import { loadTaskModules } from "./runtime/utils/loadTasks";
 import { bundleTaskFiles } from "./runtime/utils/bundleTasks";
 
 import type {
@@ -233,16 +232,16 @@ export async function configureNitroTasks(
         }
 
         const tasks = await scanTasksDirectory(tasksDir);
-        const loadedModules = await loadTaskModules(tasks, tasksDir);
+        const bundledTasks = await bundleTaskFiles(tasks, tasksDir);
 
         console.log(
             "🔄 Registering tasks:",
-            loadedModules.map((task) => task.name)
+            bundledTasks.map((task) => task.name)
         );
 
         const scheduledTasksMap = new Map<string, string[]>();
 
-        for (const taskModule of loadedModules) {
+        for (const taskModule of bundledTasks) {
             // Ensure path has extension
             const taskPath = taskModule.path.endsWith('.ts') || taskModule.path.endsWith('.js')
                 ? taskModule.path
