@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.2.3
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.2...v1.2.3)
+
+### 🩹 Fixes
+
+- Task bundler trying to import raw ts files ([4007c92](https://github.com/zephkelly/nuxt-task/commit/4007c92))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.2.2
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.0...v1.2.2)
