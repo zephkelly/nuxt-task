@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.2.5
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.4...v1.2.5)
+
+### 🏡 Chore
+
+- Revert 1.2.4 changes breaking task loading ([8b4e837](https://github.com/zephkelly/nuxt-task/commit/8b4e837))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.2.4
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.3...v1.2.4)
