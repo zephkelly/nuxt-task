@@ -2,6 +2,8 @@ import { rollup } from "rollup";
 import { nodeResolve } from "@rollup/plugin-node-resolve";
 import esbuild from "rollup-plugin-esbuild";
 import { join, dirname } from "pathe";
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 export type BundledTask = {
     name: string;
@@ -86,25 +88,37 @@ export async function bundleTaskFiles(
         try {
             const fullPath = join(tasksDir, task.path);
 
-            const taskModule = await import(fullPath);
-
-            if (!taskModule?.default?.meta) {
-                console.warn(`Task ${task.name} has invalid format - missing meta`);
-                continue;
-            }
-
+            // Bundle the task file first (this resolves all relative imports)
             const bundledCode = await bundleTaskFile(fullPath, tasksDir);
 
-            const modulePath = task.path.replace(/\.[^/.]+$/, "");
+            // Write bundled code to a temporary file so we can import it to get metadata
+            const tempFile = join(tmpdir(), `nuxt-task-${task.name}-${Date.now()}.mjs`);
+            await writeFile(tempFile, bundledCode, 'utf-8');
 
-            bundledTasks.push({
-                name: task.name,
-                path: modulePath,
-                code: bundledCode,
-                module: taskModule,
-            });
+            try {
+                // Import the bundled file to get metadata
+                const taskModule = await import(tempFile);
 
-            console.log(`✓ Bundled task: ${task.name}`);
+                if (!taskModule?.default?.meta) {
+                    console.warn(`Task ${task.name} has invalid format - missing meta`);
+                    await unlink(tempFile).catch(() => {});
+                    continue;
+                }
+
+                const modulePath = task.path.replace(/\.[^/.]+$/, "");
+
+                bundledTasks.push({
+                    name: task.name,
+                    path: modulePath,
+                    code: bundledCode,
+                    module: taskModule,
+                });
+
+                console.log(`✓ Bundled task: ${task.name}`);
+            } finally {
+                // Clean up temp file
+                await unlink(tempFile).catch(() => {});
+            }
         } catch (error) {
             console.warn(`Failed to bundle task ${task.name}:`, error);
         }
