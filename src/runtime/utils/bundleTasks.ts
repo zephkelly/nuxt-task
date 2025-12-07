@@ -4,6 +4,7 @@ import esbuild from "rollup-plugin-esbuild";
 import { join, dirname } from "pathe";
 import { writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import type { BundlerOptions } from "../../module";
 
 export type BundledTask = {
     name: string;
@@ -20,14 +21,48 @@ export type BundledTask = {
     };
 };
 
+// Framework packages that should always be external (never bundled)
+const FRAMEWORK_EXTERNALS: RegExp[] = [
+    /^nuxt-task/,
+    /^#nuxt-task/,
+    /^nitropack/,
+    /^h3/,
+    /^@nuxt\//,
+    /^nuxt$/,
+    /^vue$/,
+    /^node:/,
+];
+
+/**
+ * Check if a module ID matches any pattern in the list
+ */
+function matchesPattern(id: string, patterns: (string | RegExp)[]): boolean {
+    return patterns.some(pattern => {
+        if (typeof pattern === 'string') {
+            return id.includes(pattern);
+        }
+        return pattern.test(id);
+    });
+}
+
 /**
  * Bundle a task file with all its dependencies into a single module
  * This resolves the issue where task files can't use relative imports
+ *
+ * @param taskPath - Full path to the task file
+ * @param tasksDir - Directory containing tasks
+ * @param bundlerOptions - Optional bundler configuration for externals/inline patterns
  */
 export async function bundleTaskFile(
     taskPath: string,
-    tasksDir: string
+    tasksDir: string,
+    bundlerOptions?: BundlerOptions
 ): Promise<string> {
+    // User-configured externals (default: [/node_modules/])
+    const userExternals = bundlerOptions?.external || [/node_modules/];
+    // User-configured inline patterns (default: [])
+    const userInline = bundlerOptions?.inline || [];
+
     try {
         const bundle = await rollup({
             input: taskPath,
@@ -43,16 +78,25 @@ export async function bundleTaskFile(
                     rootDir: dirname(taskPath),
                 }),
             ],
-            external: [
-                /^nuxt-task/,
-                /^#nuxt-task/,
-                /^nitropack/,
-                /^h3/,
-                /^@nuxt\//,
-                /^nuxt$/,
-                /^vue$/,
-                /^node:/,
-            ],
+            external: (id: string) => {
+                // First check if explicitly marked for inline bundling
+                if (matchesPattern(id, userInline)) {
+                    return false; // Don't externalize, bundle it
+                }
+
+                // Always externalize framework packages
+                if (FRAMEWORK_EXTERNALS.some(pattern => pattern.test(id))) {
+                    return true;
+                }
+
+                // Check user-configured externals (default includes /node_modules/)
+                if (matchesPattern(id, userExternals)) {
+                    return true;
+                }
+
+                // Bundle everything else (relative imports, local files, etc.)
+                return false;
+            },
             treeshake: true,
             onwarn: (warning, warn) => {
                 if (warning.code === 'UNRESOLVED_IMPORT') return;
@@ -77,10 +121,15 @@ export async function bundleTaskFile(
 
 /**
  * Bundle multiple task files
+ *
+ * @param tasks - Array of task info with name and path
+ * @param tasksDir - Directory containing tasks
+ * @param bundlerOptions - Optional bundler configuration for externals/inline patterns
  */
 export async function bundleTaskFiles(
     tasks: Array<{ name: string; path: string }>,
-    tasksDir: string
+    tasksDir: string,
+    bundlerOptions?: BundlerOptions
 ): Promise<BundledTask[]> {
     const bundledTasks: BundledTask[] = [];
 
@@ -89,7 +138,7 @@ export async function bundleTaskFiles(
             const fullPath = join(tasksDir, task.path);
 
             // Bundle the task file first (this resolves all relative imports)
-            const bundledCode = await bundleTaskFile(fullPath, tasksDir);
+            const bundledCode = await bundleTaskFile(fullPath, tasksDir, bundlerOptions);
 
             // Write bundled code to a temporary file so we can import it to get metadata
             const tempFile = join(tmpdir(), `nuxt-task-${task.name}-${Date.now()}.mjs`);

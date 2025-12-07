@@ -22,6 +22,13 @@ import type {
 
 import type { StorageType } from "./runtime/storage";
 
+export interface BundlerOptions {
+    /** Patterns to externalize (default: [/node_modules/]) - keeps dependencies as external imports */
+    external?: (string | RegExp)[];
+    /** Patterns to force bundle inline (default: []) - useful for local utilities */
+    inline?: (string | RegExp)[];
+}
+
 export interface BaseModuleOptions {
     serverTasks?: boolean;
     clientTasks?: boolean;
@@ -33,6 +40,8 @@ export interface BaseModuleOptions {
         type?: StorageType;
         config?: Record<string, any>;
     };
+    /** Bundler configuration for task files */
+    bundler?: BundlerOptions;
 }
 
 export type ModuleOptions = BaseModuleOptions & {
@@ -133,6 +142,22 @@ async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, r
         nitroConfig.experimental = nitroConfig.experimental || {};
         nitroConfig.experimental.tasks = true;
 
+        // Configure Nitro's externals to ensure proper dependency tracing
+        // This prevents issues where bundled dependencies lose access to Node.js globals
+        nitroConfig.externals = nitroConfig.externals || {};
+
+        // Enable dependency tracing via vercel/nft
+        nitroConfig.externals.trace = true;
+
+        // Merge user-configured externals with sensible defaults for common problematic packages
+        const existingExternal = nitroConfig.externals.external || [];
+        nitroConfig.externals.external = [
+            ...existingExternal,
+            // Packages that use Node.js globals (File, Blob, etc.) or have native deps
+            // These should be traced by nft, not bundled inline
+            ...(moduleOptions.bundler?.external || []),
+        ];
+
         await configureNitroTasks(moduleOptions, nitroConfig, nuxt);
     });
 }
@@ -140,7 +165,7 @@ async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, r
 async function setupCustomTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
         setupNitroBasics(nitroConfig, resolver);
-        await setupVirtualTasksModule(nuxt, nitroConfig);
+        await setupVirtualTasksModule(nuxt, nitroConfig, moduleOptions);
     });
 }
 
@@ -156,7 +181,7 @@ function setupNitroBasics(nitroConfig: any, resolver: any) {
     nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
 }
 
-async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
+async function setupVirtualTasksModule(nuxt: any, nitroConfig: any, moduleOptions: ModuleOptions) {
     const tasksDir = join(nuxt.options.serverDir, "tasks");
 
     try {
@@ -166,15 +191,15 @@ async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
         return;
     }
 
-    const virtualModule = await generateVirtualTasksModule(tasksDir);
+    const virtualModule = await generateVirtualTasksModule(tasksDir, moduleOptions.bundler);
 
     nitroConfig.virtual = nitroConfig.virtual || {};
     nitroConfig.virtual["#tasks"] = virtualModule;
 }
 
-async function generateVirtualTasksModule(tasksDir: string) {
+async function generateVirtualTasksModule(tasksDir: string, bundlerOptions?: BundlerOptions) {
     const tasks = await scanTasksDirectory(tasksDir);
-    const bundledTasks = await bundleTaskFiles(tasks, tasksDir);
+    const bundledTasks = await bundleTaskFiles(tasks, tasksDir, bundlerOptions);
 
     console.log(
         "🔄 Registering tasks:",
