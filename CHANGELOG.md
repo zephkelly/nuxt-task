@@ -1,6 +1,28 @@
 # Changelog
 
 
+## v1.2.6
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.5...v1.2.6)
+
+### 🩹 Fixes
+
+- Task files can now use any import a Nitro server file supports — relative, aliased (`~`, `~~`, `#imports`), server auto-imports, and node_modules — in **both** execution modes. Previously a task file with an aliased or transitively-aliased import was silently dropped from the production build.
+
+### 🚀 Enhancements
+
+- Native (experimental) mode reads each task's `schedule`/`description` **statically** from source with `magicast` instead of executing the task file at build time. A non-literal `schedule` is registered as on-demand only, with a warning.
+- Custom scheduler mode now generates the `#tasks` virtual module by statically importing each task file, letting Nitro resolve every import. This also fixes a doubled task-path bug.
+
+### 💥 Behavior changes
+
+- A task file that fails to compile or resolve is now a hard build error instead of being silently dropped.
+
+### 🏡 Chore
+
+- Removed the (unreleased) `bundler` module option and the Rollup/esbuild task bundler, replaced by the static approaches above.
+- Added `magicast` as a dependency.
+
 ## v1.2.5
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.4...v1.2.5)

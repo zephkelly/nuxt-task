@@ -12,8 +12,7 @@ import { join, resolve } from "pathe";
 import { moduleConfiguration, DEFAULT_MODULE_OPTIONS } from "./runtime/config";
 
 import { scanTasksDirectory } from "./runtime/utils/scanTasks";
-import { loadTaskModules } from "./runtime/utils/loadTasks";
-import { bundleTaskFiles } from "./runtime/utils/bundleTasks";
+import { extractTaskMetas } from "./runtime/utils/extractTaskMeta";
 
 import type {
     FlexibleTimezoneOptions,
@@ -21,13 +20,6 @@ import type {
 } from "./runtime/utils/timezone";
 
 import type { StorageType } from "./runtime/storage";
-
-export interface BundlerOptions {
-    /** Patterns to externalize (default: [/node_modules/]) - keeps dependencies as external imports */
-    external?: (string | RegExp)[];
-    /** Patterns to force bundle inline (default: []) - useful for local utilities */
-    inline?: (string | RegExp)[];
-}
 
 export interface BaseModuleOptions {
     serverTasks?: boolean;
@@ -40,8 +32,6 @@ export interface BaseModuleOptions {
         type?: StorageType;
         config?: Record<string, any>;
     };
-    /** Bundler configuration for task files */
-    bundler?: BundlerOptions;
 }
 
 export type ModuleOptions = BaseModuleOptions & {
@@ -146,17 +136,14 @@ async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, r
         // This prevents issues where bundled dependencies lose access to Node.js globals
         nitroConfig.externals = nitroConfig.externals || {};
 
-        // Enable dependency tracing via vercel/nft
+        // Enable dependency tracing via vercel/nft. This is what lets task
+        // files' node_modules dependencies (including ones relying on Node
+        // globals like File/Blob) be traced instead of bundled inline.
         nitroConfig.externals.trace = true;
 
-        // Merge user-configured externals with sensible defaults for common problematic packages
+        // Preserve any externals Nitro/other modules already configured.
         const existingExternal = nitroConfig.externals.external || [];
-        nitroConfig.externals.external = [
-            ...existingExternal,
-            // Packages that use Node.js globals (File, Blob, etc.) or have native deps
-            // These should be traced by nft, not bundled inline
-            ...(moduleOptions.bundler?.external || []),
-        ];
+        nitroConfig.externals.external = [...existingExternal];
 
         await configureNitroTasks(moduleOptions, nitroConfig, nuxt);
     });
@@ -165,7 +152,7 @@ async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, r
 async function setupCustomTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
         setupNitroBasics(nitroConfig, resolver);
-        await setupVirtualTasksModule(nuxt, nitroConfig, moduleOptions);
+        await setupVirtualTasksModule(nuxt, nitroConfig);
     });
 }
 
@@ -181,7 +168,7 @@ function setupNitroBasics(nitroConfig: any, resolver: any) {
     nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
 }
 
-async function setupVirtualTasksModule(nuxt: any, nitroConfig: any, moduleOptions: ModuleOptions) {
+async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
     const tasksDir = join(nuxt.options.serverDir, "tasks");
 
     try {
@@ -191,48 +178,38 @@ async function setupVirtualTasksModule(nuxt: any, nitroConfig: any, moduleOption
         return;
     }
 
-    const virtualModule = await generateVirtualTasksModule(tasksDir, moduleOptions.bundler);
+    const virtualModule = await generateVirtualTasksModule(tasksDir);
 
     nitroConfig.virtual = nitroConfig.virtual || {};
     nitroConfig.virtual["#tasks"] = virtualModule;
 }
 
-async function generateVirtualTasksModule(tasksDir: string, bundlerOptions?: BundlerOptions) {
+/**
+ * Build the `#tasks` virtual module for custom-scheduler mode.
+ *
+ * Each scanned task file is statically imported by its absolute path, so
+ * Nitro's own build resolves its aliases (`~`, `#imports`, ...), auto-imports,
+ * relative imports and node_modules exactly like any other server file. The
+ * previous approach bundled + executed task files in a bare Node context at
+ * config time, which silently dropped any task with a non-trivial import.
+ */
+export async function generateVirtualTasksModule(tasksDir: string) {
     const tasks = await scanTasksDirectory(tasksDir);
-    const bundledTasks = await bundleTaskFiles(tasks, tasksDir, bundlerOptions);
 
     console.log(
         "🔄 Registering tasks:",
-        bundledTasks.map((task) => task.name)
+        tasks.map((task) => task.name)
     );
 
-    // Generate virtual module with inlined bundled code
-    // Since Rollup generates ESM with 'export default', we need to transform it
-    // to extract the default export into a const variable
-    const taskModules = bundledTasks
-        .map((task) => {
-            const variableName = task.name.replace(/[:-]/g, "_");
+    // scanTasksDirectory already returns absolute paths with extensions, so we
+    // import them directly (no re-join). JSON.stringify safely quotes the path;
+    // pathe yields POSIX separators so there is no Windows backslash issue.
+    const imports = tasks
+        .map((task, i) => `import task_${i} from ${JSON.stringify(task.path)};`)
+        .join("\n");
+    const list = tasks.map((_, i) => `task_${i}`).join(", ");
 
-            // Transform 'export default' to a variable assignment
-            // This regex finds 'export default' and replaces it with 'const variableName ='
-            let transformedCode = task.code.replace(
-                /export\s+default\s+/,
-                `const ${variableName} = `
-            );
-
-            return `// Task: ${task.name}\n${transformedCode}`;
-        })
-        .join("\n\n");
-
-    return `
-${taskModules}
-
-export const taskDefinitions = [
-    ${bundledTasks
-        .map((task) => task.name.replace(/[:-]/g, "_"))
-        .join(",\n    ")}
-];
-    `;
+    return `${imports}\n\nexport const taskDefinitions = [${list}];\n`;
 }
 
 export async function configureNitroTasks(
@@ -258,38 +235,37 @@ export async function configureNitroTasks(
         }
 
         const tasks = await scanTasksDirectory(tasksDir);
-        const loadedModules = await loadTaskModules(tasks, tasksDir);
+        // Read schedule/description statically (parse, don't execute) so task
+        // files can use any import a Nitro server file supports. Nitro itself
+        // builds `handler` below with full alias/auto-import resolution.
+        const taskMetas = await extractTaskMetas(tasks);
 
         console.log(
             "🔄 Registering tasks:",
-            loadedModules.map((task) => task.name)
+            taskMetas.map((task) => task.name)
         );
 
         const scheduledTasksMap = new Map<string, string[]>();
 
-        for (const taskModule of loadedModules) {
-            // Ensure path has extension
-            const taskPath = taskModule.path.endsWith('.ts') || taskModule.path.endsWith('.js')
-                ? taskModule.path
-                : `${taskModule.path}.ts`;
+        for (const taskMeta of taskMetas) {
+            // scanTasksDirectory already yields an absolute path with extension.
+            const fullTaskPath = taskMeta.path;
 
-            const fullTaskPath = join(tasksDir, taskPath);
-
-            nitroConfig.tasks[taskModule.name] = {
-                name: taskModule.name,
-                description: taskModule.module.default.meta.description || "",
+            nitroConfig.tasks[taskMeta.name] = {
+                name: taskMeta.name,
+                description: taskMeta.description,
                 handler: fullTaskPath,
             };
 
-            if (taskModule.module.default.schedule) {
-                const cronExpression = taskModule.module.default.schedule;
+            if (taskMeta.schedule) {
+                const cronExpression = taskMeta.schedule;
                 const tasks = scheduledTasksMap.get(cronExpression) || [];
-                tasks.push(taskModule.name);
+                tasks.push(taskMeta.name);
                 scheduledTasksMap.set(cronExpression, tasks);
             }
 
             // Register tasks as Nitro handlers
-            nitroConfig.handlers[`/_nitro/tasks/${taskModule.name}`] = {
+            nitroConfig.handlers[`/_nitro/tasks/${taskMeta.name}`] = {
                 method: "post",
                 handler: fullTaskPath,
             };

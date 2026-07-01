@@ -28,7 +28,12 @@ export async function loadTasks(): Promise<TaskDefinition[]> {
     try {
         // @ts-ignore - virtual file
         const tasksVirtualFile = await import('#tasks')
-        return tasksVirtualFile.taskDefinitions || []
+        const defs = tasksVirtualFile.taskDefinitions || []
+        // Defensive: a mis-shaped default export shouldn't crash the scheduler.
+        // (A task that fails to compile still hard-fails the build, as intended.)
+        return defs.filter(
+            (t: any) => t && t.meta && typeof t.meta.name === 'string',
+        )
     } catch {
         return []
     }

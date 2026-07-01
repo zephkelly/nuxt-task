@@ -15,13 +15,6 @@ export const DEFAULT_MODULE_OPTIONS: ModuleOptions = {
         validate: true,
         strict: false,
     },
-    bundler: {
-        // Externalize all node_modules by default - this ensures dependencies
-        // are handled by Nitro's nft tracing instead of being bundled inline
-        external: [/node_modules/],
-        // Nothing forced to bundle by default
-        inline: [],
-    },
 } satisfies ModuleOptions;
 
 export class ModuleConfiguration {

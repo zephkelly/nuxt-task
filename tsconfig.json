@@ -7,5 +7,9 @@
         "dist",
         "node_modules",
         "playground",
+        // Fixtures are consumer-app simulations with their own Nuxt build
+        // context (`~` aliases, server auto-imports). They are built/run as
+        // their own apps for e2e checks, not type-checked by the module here.
+        "test/fixtures",
     ]
 }

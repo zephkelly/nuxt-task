@@ -17,7 +17,8 @@ const cronConfig: ModuleOptions = {
 
 export default defineNuxtConfig({
         modules: [nuxtCron],
-        cron: cronConfig,
+        // Use the module's real config key so experimental (native) mode engages.
+        nuxtTask: cronConfig,
         nitro: {
                 experimental: {
                         tasks: true,

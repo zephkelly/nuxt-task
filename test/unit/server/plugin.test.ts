@@ -331,12 +331,51 @@ describe('Plugin - Unit Tests', () => {
     // Place them after the 'edge cases' describe block, but before the final closing })
 
     describe('loadTasks', () => {
+        afterEach(() => {
+            vi.resetModules()
+            vi.doUnmock('#tasks')
+        })
+
         it('should return empty array from mocked module', async () => {
             const { loadTasks } = await import('../../../src/runtime/plugin')
             const tasks = await loadTasks()
 
             // The mock #tasks module returns empty array
             expect(Array.isArray(tasks)).toBe(true)
+            expect(tasks).toEqual([])
+        })
+
+        it('filters out null and mis-shaped task definitions', async () => {
+            vi.resetModules()
+            vi.doMock('#tasks', () => ({
+                taskDefinitions: [
+                    null,
+                    undefined,
+                    { schedule: '* * * * *' }, // no meta
+                    { meta: {} }, // meta.name missing
+                    { meta: { name: 42 } }, // meta.name not a string
+                    {
+                        meta: { name: 'good' },
+                        schedule: '* * * * *',
+                        run: async () => ({}),
+                    },
+                ],
+            }))
+
+            const { loadTasks } = await import('../../../src/runtime/plugin')
+            const tasks = await loadTasks()
+
+            expect(tasks).toHaveLength(1)
+            expect(tasks[0].meta.name).toBe('good')
+        })
+
+        it('returns an empty array when taskDefinitions is missing', async () => {
+            vi.resetModules()
+            vi.doMock('#tasks', () => ({}))
+
+            const { loadTasks } = await import('../../../src/runtime/plugin')
+            const tasks = await loadTasks()
+
             expect(tasks).toEqual([])
         })
     })
