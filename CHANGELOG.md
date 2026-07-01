@@ -1,6 +1,14 @@
 # Changelog
 
 
+## v1.2.7
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.6...v1.2.7)
+
+### 🩹 Fixes
+
+- Native (experimental) mode no longer forces `@vercel/nft` dependency tracing in dev. Nitro's dev preset disables tracing on purpose; forcing it on made `nuxt dev` startup dramatically slower (tracing the full node_modules graph of every task's imports on each start). Tracing is now only enabled for production builds, where Nitro already traces by default.
+
 ## v1.2.6
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.5...v1.2.6)

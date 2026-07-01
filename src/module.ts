@@ -125,25 +125,28 @@ async function setupModuleBasics(
     nuxt.options.build.transpile.push("nuxt-task");
 }
 
-async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
+export async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
         setupNitroBasics(nitroConfig, resolver);
 
         nitroConfig.experimental = nitroConfig.experimental || {};
         nitroConfig.experimental.tasks = true;
 
-        // Configure Nitro's externals to ensure proper dependency tracing
-        // This prevents issues where bundled dependencies lose access to Node.js globals
+        // Configure Nitro's externals to ensure proper dependency tracing.
+        // Tracing (vercel/nft) lets task files' node_modules dependencies
+        // (including ones relying on Node globals like File/Blob) be traced
+        // instead of bundled inline.
         nitroConfig.externals = nitroConfig.externals || {};
 
-        // Enable dependency tracing via vercel/nft. This is what lets task
-        // files' node_modules dependencies (including ones relying on Node
-        // globals like File/Blob) be traced instead of bundled inline.
-        nitroConfig.externals.trace = true;
-
-        // Preserve any externals Nitro/other modules already configured.
-        const existingExternal = nitroConfig.externals.external || [];
-        nitroConfig.externals.external = [...existingExternal];
+        // Only force NFT tracing for the production output. Nitro's dev preset
+        // sets `externals.trace = false` on purpose: forcing it true makes
+        // @vercel/nft trace the full node_modules graph of every task's imports
+        // on each `nuxt dev` start — very slow with heavy imports and pointless
+        // in dev (no traced .output is emitted). Production already traces
+        // externals by default, so this only needs to be explicit for builds.
+        if (!nuxt.options.dev) {
+            nitroConfig.externals.trace = true;
+        }
 
         await configureNitroTasks(moduleOptions, nitroConfig, nuxt);
     });
@@ -185,6 +188,23 @@ async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
 }
 
 /**
+ * Format the build/dev-time task registration log line.
+ *
+ * When more than 3 tasks are registered we collapse the list into a simple
+ * "N tasks registered" count; otherwise we list the task names. The stand-out
+ * parts (the count, or the task names) are printed in green ANSI colour.
+ */
+function formatTaskRegistrationMessage(taskNames: string[]) {
+    const green = (text: string) => `\x1b[1;32m${text}\x1b[0m`;
+
+    if (taskNames.length > 3) {
+        return `🔄 ${green(`${taskNames.length} tasks registered`)}`;
+    }
+
+    return `🔄 Registering tasks: ${green(taskNames.join(", "))}`;
+}
+
+/**
  * Build the `#tasks` virtual module for custom-scheduler mode.
  *
  * Each scanned task file is statically imported by its absolute path, so
@@ -197,8 +217,7 @@ export async function generateVirtualTasksModule(tasksDir: string) {
     const tasks = await scanTasksDirectory(tasksDir);
 
     console.log(
-        "🔄 Registering tasks:",
-        tasks.map((task) => task.name)
+        formatTaskRegistrationMessage(tasks.map((task) => task.name))
     );
 
     // scanTasksDirectory already returns absolute paths with extensions, so we
@@ -241,8 +260,7 @@ export async function configureNitroTasks(
         const taskMetas = await extractTaskMetas(tasks);
 
         console.log(
-            "🔄 Registering tasks:",
-            taskMetas.map((task) => task.name)
+            formatTaskRegistrationMessage(taskMetas.map((task) => task.name))
         );
 
         const scheduledTasksMap = new Map<string, string[]>();
