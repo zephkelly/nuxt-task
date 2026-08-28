@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.2.8
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.7...v1.2.8)
+
+### 🩹 Fixes
+
+- Various issues with cron expression parsing and task running ([58b92d9](https://github.com/zephkelly/nuxt-task/commit/58b92d9))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.2.7
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.6...v1.2.7)
