@@ -116,11 +116,19 @@ export default defineTaskHandler({
 
 The value your handler returns is expected to be an object. On success it is spread into a `{ success: true, ...result }` envelope, so avoid returning an object that already has a `success` key, since it would overwrite the wrapper's flag.
 
-### Per-task options and the run limit
+If your handler throws, the error propagates and the run is recorded as failed.
+
+> Before v1.3.0, native (`experimental.tasks`) mode caught handler errors and resolved `{ success: false, error }` instead of throwing, so Nitro recorded every failed run as a success. If you have code reading `res.success` from a programmatic `runTask()` call, it now needs to catch a rejection instead.
+
+### Per-task options
 
 The supported per-task options are `timezone` (an IANA identifier), `maxRetries`, `retryDelay` (milliseconds), `timeout` (milliseconds), `exclusive` (a boolean that skips a run if the previous one is still running), and `catchUp` (a boolean that runs a task that was missed while the server was down).
 
-Be aware of one current behavior of `maxRetries`. The run counter that tracks retries is also used as a total-run cap, so a task with `maxRetries` set stops executing after `maxRetries + 1` runs over the lifetime of the server process. A task with `maxRetries: 3` runs at most four times in total and then stops. For a task that should keep running on its schedule indefinitely, leave `maxRetries` unset.
+`maxRetries` is a budget for a single scheduled run, not a lifetime cap. A task scheduled `*/5 * * * *` with `maxRetries: 4` and `retryDelay: 60_000` attempts up to five times within its five-minute window and starts fresh on the next one. `maxRetries: 0` means run once and do not retry.
+
+> Before v1.3.0 this counter was shared with a lifetime run count, so `maxRetries: 3` silently stopped a recurring task after four runs and `maxRetries: 0` stopped it running at all. If you left `maxRetries` unset to work around that, you can now set it.
+
+`exclusive` and `catchUp` apply to the custom scheduler. In native (`experimental.tasks`) mode Nitro already refuses to start a task that is still running in the same process, so a task is effectively exclusive per process there; neither option is a distributed lock, so a second replica can still run the same task concurrently.
 
 ### Nested task directories
 

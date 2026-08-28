@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import type { CronTask, TaskId } from '~/src/runtime/task/types'
+import type { CronTask, TaskId } from '../task/types'
 
 /**
  * @class TaskQueue
@@ -18,11 +18,17 @@ export class TaskQueue extends EventEmitter {
     private queue: Map<TaskId, CronTask>
     /** Set of currently running task IDs */
     private running: Set<TaskId>
+    /** Pending retry delays, so they can be cancelled on remove/clear */
+    private retryTimers: Map<TaskId, {
+        timer: ReturnType<typeof setTimeout>
+        resolve: (proceed: boolean) => void
+    }>
 
     constructor() {
         super()
         this.queue = new Map()
         this.running = new Set()
+        this.retryTimers = new Map()
     }
 
     /**
@@ -45,6 +51,7 @@ export class TaskQueue extends EventEmitter {
  * @returns {boolean} true if the task was removed, false if it didn't exist
  */
     remove(taskId: TaskId): boolean {
+        this.cancelRetries(taskId)
         return this.queue.delete(taskId)
     }
 
@@ -78,6 +85,15 @@ export class TaskQueue extends EventEmitter {
     }
 
     /**
+ * Number of tasks currently running
+ *
+ * @returns {number} Count of in-flight tasks
+ */
+    runningCount(): number {
+        return this.running.size
+    }
+
+    /**
  * Executes a task with retry and timeout handling
  *
  * @param {TaskId} taskId - ID of the task to execute
@@ -108,72 +124,155 @@ export class TaskQueue extends EventEmitter {
             return;
         }
 
-        // Calculate total allowed attempts (initial + retries)
-        const maxAttempts = task.options.maxRetries
-            ? task.options.maxRetries === 0
-                ? 0
-                : task.options.maxRetries + 1
-            : -1
-
-        // Skip if we've reached max attempts
-        if (maxAttempts !== -1 && task.metadata.runCount >= maxAttempts) {
-            return;
-        }
+        const maxAttempts = this.getMaxAttempts(task)
 
         this.running.add(taskId)
         task.status = 'running'
         this.emit('started', { type: 'started', task })
 
         try {
-            const result = await Promise.race([
-                task.execute({
-                    name: task.name,
-                    scheduledTime: new Date().getTime(),
-                    timezone: task.options.timezone || 'UTC',
-                }),
-                task.options.timeout
-                    ? new Promise((_, reject) =>
-                        setTimeout(
-                            () => reject(new Error('task timeout')),
-                            task.options.timeout,
-                        )
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    const result = await this.runOnce(task)
+
+                    task.status = 'completed'
+                    task.metadata.lastRun = new Date()
+                    task.metadata.runCount++
+
+                    this.emit('completed', { type: 'completed', task, result })
+                    return
+                }
+                catch (error: unknown) {
+                    task.status = 'failed'
+                    task.metadata.lastError = error as Error
+                    task.metadata.runCount++
+
+                    this.emit('failed', {
+                        type: 'failed',
+                        task,
+                        error: error as Error,
+                    })
+
+                    if (attempt >= maxAttempts) {
+                        return
+                    }
+
+                    this.emit('retry', { type: 'retry', task, attempt })
+
+                    const proceed = await this.delayRetry(
+                        taskId,
+                        task.options.retryDelay || 1000,
                     )
-                    : Promise.resolve(),
-            ])
 
-            task.status = 'completed'
-            task.metadata.lastRun = new Date()
-            task.metadata.runCount++
-
-            this.emit('completed', { type: 'completed', task, result })
-        }
-        catch (error: unknown) {
-            task.status = 'failed'
-            task.metadata.lastError = error as Error
-            task.metadata.runCount++
-
-            this.emit('failed', {
-                type: 'failed',
-                task,
-                error: error as Error,
-            })
-
-            if (task.metadata.runCount < maxAttempts) {
-                this.emit('retry', {
-                    type: 'retry',
-                    task,
-                    attempt: task.metadata.runCount,
-                })
-
-                const retryTimeout = setTimeout(() => {
-                    this.executeTask(taskId)
-                    clearTimeout(retryTimeout)
-                }, task.options.retryDelay || 1000)
+                    // Cancelled by remove()/clear() while we were waiting.
+                    if (!proceed) {
+                        return
+                    }
+                }
             }
         }
         finally {
             this.running.delete(taskId)
         }
+    }
+
+    /**
+ * Total attempts allowed for one scheduled run: the initial attempt plus
+ * `maxRetries` retries.
+ *
+ * The budget belongs to a single scheduled run. It used to be compared
+ * against `metadata.runCount`, a lifetime counter incremented on success as
+ * well as failure, so `maxRetries: 3` silently stopped a recurring task
+ * forever after four ticks, and `maxRetries: 0` meant the task never ran at
+ * all.
+ *
+ * @param {CronTask} task - The task to size a budget for
+ * @returns {number} Attempts allowed, always at least one
+ */
+    private getMaxAttempts(task: CronTask): number {
+        const maxRetries = task.options.maxRetries
+
+        if (maxRetries === undefined || maxRetries === null) {
+            return 1
+        }
+
+        return Math.max(0, maxRetries) + 1
+    }
+
+    /**
+ * Runs a single attempt, racing against the timeout only when one is set.
+ *
+ * The race previously used `Promise.resolve()` as its second arm whenever no
+ * timeout was configured. That promise is already settled, so it won every
+ * race: the task was reported complete with an undefined result before its
+ * handler had finished, real failures were discarded, and `running` was
+ * cleared immediately, which left `exclusive` inert.
+ *
+ * @param {CronTask} task - The task to run
+ * @returns {Promise<unknown>} The handler's result
+ */
+    private async runOnce(task: CronTask): Promise<unknown> {
+        const execution = task.execute({
+            name: task.name,
+            scheduledTime: new Date().getTime(),
+            timezone: task.options.timezone || 'UTC',
+        })
+
+        if (!task.options.timeout) {
+            return await execution
+        }
+
+        let timer: ReturnType<typeof setTimeout> | undefined
+
+        try {
+            return await Promise.race([
+                execution,
+                new Promise((_, reject) => {
+                    timer = setTimeout(
+                        () => reject(new Error('task timeout')),
+                        task.options.timeout,
+                    )
+                }),
+            ])
+        }
+        finally {
+            if (timer) clearTimeout(timer)
+        }
+    }
+
+    /**
+ * Waits out a retry delay, resolving false if the wait is cancelled.
+ *
+ * Retries used to be scheduled with a bare `setTimeout` that was never
+ * tracked, so a removed task kept retrying and its rejection went unhandled.
+ *
+ * @param {TaskId} taskId - The task being retried
+ * @param {number} delay - Delay in milliseconds
+ * @returns {Promise<boolean>} true to proceed, false if cancelled
+ */
+    private delayRetry(taskId: TaskId, delay: number): Promise<boolean> {
+        return new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => {
+                this.retryTimers.delete(taskId)
+                resolve(true)
+            }, delay)
+
+            this.retryTimers.set(taskId, { timer, resolve })
+        })
+    }
+
+    /**
+ * Cancels a pending retry delay for a task, if one is waiting.
+ *
+ * @param {TaskId} taskId - ID of the task whose retry should be cancelled
+ */
+    cancelRetries(taskId: TaskId): void {
+        const pending = this.retryTimers.get(taskId)
+        if (!pending) return
+
+        clearTimeout(pending.timer)
+        this.retryTimers.delete(taskId)
+        pending.resolve(false)
     }
 
     /**
@@ -208,6 +307,9 @@ export class TaskQueue extends EventEmitter {
  * Clears all tasks from the queue and running set
  */
     clear(): void {
+        for (const taskId of [...this.retryTimers.keys()]) {
+            this.cancelRetries(taskId)
+        }
         this.queue.clear()
         this.running.clear()
     }

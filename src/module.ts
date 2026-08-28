@@ -9,10 +9,16 @@ import {
 } from "@nuxt/kit";
 import { join, resolve } from "pathe";
 
-import { moduleConfiguration, DEFAULT_MODULE_OPTIONS } from "./runtime/config";
+import {
+    moduleConfiguration,
+    ModuleConfiguration,
+    DEFAULT_MODULE_OPTIONS,
+    RUNTIME_CONFIG_KEY,
+} from "./runtime/config";
 
 import { scanTasksDirectory } from "./runtime/utils/scanTasks";
 import { extractTaskMetas } from "./runtime/utils/extractTaskMeta";
+import type { TaskMetaInfo } from "./runtime/utils/extractTaskMeta";
 
 import type {
     FlexibleTimezoneOptions,
@@ -98,10 +104,29 @@ async function setupModuleBasics(
     nuxt: any,
     resolver: any
 ) {
+    // Keyed by the shared constant so the publish site and the runtime read
+    // site cannot drift apart again.
     updateRuntimeConfig({
-        nuxtTask: moduleOptions,
+        [RUNTIME_CONFIG_KEY]: moduleOptions,
     });
     moduleConfiguration.setModuleOptions(moduleOptions);
+
+    // Warn, never throw: these checks are advisory, and a hard failure here
+    // would break configurations that work today.
+    if (!ModuleConfiguration.validateModuleOptions(moduleOptions)) {
+        console.warn(
+            "[ nuxt-task ] Module options look invalid. "
+            + "The module will continue with the options as given."
+        );
+    }
+
+    if (moduleOptions.clientTasks) {
+        console.warn(
+            "[ nuxt-task ] `clientTasks` is not implemented and has no "
+            + "effect. It is deprecated and will be removed in a future "
+            + "major release."
+        );
+    }
 
     // Set up aliases
     const runtimePath = resolver.resolve("./runtime");
@@ -155,7 +180,7 @@ export async function setupExperimentalTasks(moduleOptions: ModuleOptions, nuxt:
 async function setupCustomTasks(moduleOptions: ModuleOptions, nuxt: any, resolver: any) {
     nuxt.hook("nitro:config", async (nitroConfig: any) => {
         setupNitroBasics(nitroConfig, resolver);
-        await setupVirtualTasksModule(nuxt, nitroConfig);
+        await setupVirtualTasksModule(nuxt, nitroConfig, moduleOptions);
     });
 }
 
@@ -171,8 +196,31 @@ function setupNitroBasics(nitroConfig: any, resolver: any) {
     nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
 }
 
-async function setupVirtualTasksModule(nuxt: any, nitroConfig: any) {
-    const tasksDir = join(nuxt.options.serverDir, "tasks");
+/**
+ * Resolves the directory task files are scanned from.
+ *
+ * `tasksDir` was declared on ModuleOptions and documented, but both execution
+ * modes hard-coded `<serverDir>/tasks` and never read it. A relative value is
+ * resolved against the server directory; an absolute one is used as given.
+ *
+ * @param {ModuleOptions} options - The module options
+ * @param {any} nuxt - The Nuxt instance
+ * @returns {string} Absolute path to the tasks directory
+ */
+export function resolveTasksDir(options: ModuleOptions, nuxt: any): string {
+    if (options.tasksDir) {
+        return resolve(nuxt.options.serverDir, options.tasksDir);
+    }
+
+    return join(nuxt.options.serverDir, "tasks");
+}
+
+async function setupVirtualTasksModule(
+    nuxt: any,
+    nitroConfig: any,
+    options: ModuleOptions
+) {
+    const tasksDir = resolveTasksDir(options, nuxt);
 
     try {
         await access(tasksDir, constants.R_OK);
@@ -231,6 +279,83 @@ export async function generateVirtualTasksModule(tasksDir: string) {
     return `${imports}\n\nexport const taskDefinitions = [${list}];\n`;
 }
 
+/**
+ * Two task files can derive the same task name: `foo.ts` and `foo.js` both
+ * scan to `foo`. Registration was last-write-wins, but the scheduled group
+ * still received the name once per file, so Nitro ran the surviving handler
+ * twice concurrently on every fire.
+ *
+ * Keeps the first file by sorted path so the winner is deterministic, and
+ * warns naming both. Warns rather than throws: a throw here is swallowed by
+ * configureNitroTasks' own catch, which silently disables every task.
+ */
+export function dedupeTaskMetas(taskMetas: TaskMetaInfo[]): TaskMetaInfo[] {
+    const byName = new Map<string, TaskMetaInfo>();
+    const sorted = [...taskMetas].sort((a, b) => a.path.localeCompare(b.path));
+
+    for (const taskMeta of sorted) {
+        const existing = byName.get(taskMeta.name);
+
+        if (existing) {
+            console.warn(
+                `[ nuxt-task ] Duplicate task name "${taskMeta.name}": keeping `
+                + `${existing.path}, ignoring ${taskMeta.path}. `
+                + `Rename one of the files so each task name is unique.`
+            );
+            continue;
+        }
+
+        byName.set(taskMeta.name, taskMeta);
+    }
+
+    return Array.from(byName.values());
+}
+
+/**
+ * Warn about schedules that can never fire (`0 0 30 2 *`) or that Nitro will
+ * reject outright.
+ *
+ * Validates with croner, the library Nitro actually schedules with, and never
+ * with this module's own parser: the parser is stricter than croner and would
+ * warn about expressions that run perfectly well (`@daily`, `0 0 * * 7`,
+ * six-field). Warns only, never throws.
+ */
+export async function warnUnschedulableTasks(taskMetas: TaskMetaInfo[]) {
+    let Cron: any;
+
+    try {
+        ({ Cron } = await import("croner"));
+    }
+    catch (error) {
+        // croner ships with Nitro. If it cannot be resolved, skip the check
+        // rather than failing a build over a diagnostic.
+        return;
+    }
+
+    for (const taskMeta of taskMetas) {
+        if (!taskMeta.schedule) continue;
+
+        try {
+            const cron = new Cron(taskMeta.schedule, { paused: true });
+
+            if (cron.nextRun() === null) {
+                console.warn(
+                    `[ nuxt-task ] Task "${taskMeta.name}" is scheduled `
+                    + `"${taskMeta.schedule}", which will never run.`
+                );
+            }
+
+            cron.stop();
+        }
+        catch (error) {
+            console.warn(
+                `[ nuxt-task ] Task "${taskMeta.name}" has an invalid schedule `
+                + `"${taskMeta.schedule}": ${(error as Error).message}`
+            );
+        }
+    }
+}
+
 export async function configureNitroTasks(
     options: ModuleOptions,
     nitroConfig: any,
@@ -240,10 +365,9 @@ export async function configureNitroTasks(
 
     nitroConfig.tasks = nitroConfig.tasks || {};
     nitroConfig.scheduledTasks = nitroConfig.scheduledTasks || [];
-    nitroConfig.handlers = nitroConfig.handlers || {};
 
     try {
-        const tasksDir = join(nuxt.options.serverDir, "tasks");
+        const tasksDir = resolveTasksDir(options, nuxt);
 
         try {
             await access(tasksDir, constants.R_OK);
@@ -257,11 +381,13 @@ export async function configureNitroTasks(
         // Read schedule/description statically (parse, don't execute) so task
         // files can use any import a Nitro server file supports. Nitro itself
         // builds `handler` below with full alias/auto-import resolution.
-        const taskMetas = await extractTaskMetas(tasks);
+        const taskMetas = dedupeTaskMetas(await extractTaskMetas(tasks));
 
         console.log(
             formatTaskRegistrationMessage(taskMetas.map((task) => task.name))
         );
+
+        await warnUnschedulableTasks(taskMetas);
 
         const scheduledTasksMap = new Map<string, string[]>();
 
@@ -281,12 +407,6 @@ export async function configureNitroTasks(
                 tasks.push(taskMeta.name);
                 scheduledTasksMap.set(cronExpression, tasks);
             }
-
-            // Register tasks as Nitro handlers
-            nitroConfig.handlers[`/_nitro/tasks/${taskMeta.name}`] = {
-                method: "post",
-                handler: fullTaskPath,
-            };
         }
 
         const scheduledTasksObject = Array.from(
@@ -297,14 +417,6 @@ export async function configureNitroTasks(
         }, {} as Record<string, string[]>);
 
         nitroConfig.scheduledTasks = scheduledTasksObject;
-
-        nitroConfig.handlers["/_nitro/tasks"] = {
-            method: "get",
-            handler: {
-                tasks: nitroConfig.tasks || {},
-                scheduledTasks: scheduledTasksObject || [],
-            },
-        };
     } catch (error) {
         console.warn("Error configuring Nitro tasks:", error);
         nitroConfig.tasks = {};

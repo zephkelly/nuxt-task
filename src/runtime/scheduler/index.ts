@@ -36,7 +36,32 @@ import { TaskQueue } from "./queue";
  * @fires Scheduler#task-resumed - Emitted when a task is resumed
  * @fires Scheduler#error - Emitted when an error occurs in the scheduler
  */
+/**
+ * Raised when a cron expression has no next run time within the search
+ * horizon, i.e. it can never fire (`0 0 30 2 *` — February 30th).
+ */
+export class UnsatisfiableCronExpressionError extends Error {
+    constructor(expression: string, years: number) {
+        super(
+            `Cron expression "${expression}" has no next run time within `
+            + `${years} years, so it can never run.`
+        );
+        this.name = "UnsatisfiableCronExpressionError";
+    }
+}
+
 export class Scheduler extends EventEmitter {
+    /**
+     * How far ahead a next-run search will look before declaring an
+     * expression unsatisfiable.
+     *
+     * Deliberately generous: February 29th on a given weekday recurs on a
+     * 28-year cycle, so a tight bound would reject legal expressions. The
+     * search skips whole days and hours it cannot match, so a wide horizon
+     * costs thousands of iterations rather than millions.
+     */
+    private static readonly MAX_NEXT_RUN_HORIZON_YEARS = 50;
+
     private readonly options: SchedulerOptions;
     private queue: TaskQueue;
     private storage: CronStorage;
@@ -95,7 +120,8 @@ export class Scheduler extends EventEmitter {
                 (event: CronTaskEvent) => {
                     switch (event.type) {
                         case "completed":
-                            this.updateNextRunTime(event.task);
+                            // nextRun is advanced by whichever path ran the
+                            // task, so that a failed task is rescheduled too.
                             break;
                         case "failed":
                             this.stats.totalTasksFailed++;
@@ -121,6 +147,25 @@ export class Scheduler extends EventEmitter {
      * @param {unknown} error - The original error
      * @returns {Error} Wrapped error with context
      */
+    /**
+     * Emits an "error" event without crashing when nobody is listening.
+     *
+     * Node's EventEmitter rethrows an unhandled "error" event, so emitting
+     * one from an internal failure path turned a recoverable problem into an
+     * unhandled throw for any consumer that had not attached a listener.
+     *
+     * @protected
+     * @param {Error} error - The error to report
+     */
+    protected emitError(error: Error): void {
+        if (this.listenerCount("error") > 0) {
+            this.emit("error", error);
+            return;
+        }
+
+        console.error("[ nuxt-task ] Scheduler error:", error);
+    }
+
     protected handleError(method: string, error: unknown): Error {
         if (error instanceof Error) {
             return new Error(`${method}: ${error.message}`);
@@ -156,7 +201,7 @@ export class Scheduler extends EventEmitter {
                 "Failed to start scheduler",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
             throw wrappedError;
         }
     }
@@ -192,7 +237,7 @@ export class Scheduler extends EventEmitter {
                 "Failed to stop scheduler",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
             throw wrappedError;
         }
     }
@@ -207,7 +252,10 @@ export class Scheduler extends EventEmitter {
     public getActiveTimezone(taskOptions: CronTaskOptions): string {
         const moduleOptions = moduleConfiguration.getModuleOptions();
 
-        if (moduleOptions.timezone.strict && !process.env.VITEST) {
+        // Strict enforcement used to be skipped whenever process.env.VITEST
+        // was set, which meant the tests exercised different behaviour from
+        // production and never covered this branch at all.
+        if (moduleOptions.timezone.strict) {
             const globalTimezone = moduleOptions.timezone.type;
 
             const dt = DateTime.local().setZone(globalTimezone);
@@ -283,12 +331,12 @@ export class Scheduler extends EventEmitter {
             newTask.metadata.nextRun = this.getNextRunTime(newTask);
 
             this.queue.add(newTask);
-            await this.persist();
+            await this.persist(newTask);
 
             return newTask;
         } catch (error: unknown) {
             const wrappedError = this.handleError("Failed to add task", error);
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
             throw wrappedError;
         }
     }
@@ -302,8 +350,19 @@ export class Scheduler extends EventEmitter {
     async removeTask(taskId: TaskId): Promise<void> {
         const removed = this.queue.remove(taskId);
 
-        if (removed) {
-            await this.persist();
+        if (!removed) return;
+
+        try {
+            // Removing from the queue alone left the task behind in storage,
+            // so restore() brought it back on the next boot.
+            await this.storage.remove(taskId);
+        } catch (error: unknown) {
+            const wrappedError = this.handleError(
+                `Failed to remove task ${taskId} from storage`,
+                error
+            );
+            this.emitError(wrappedError);
+            throw wrappedError;
         }
     }
 
@@ -315,7 +374,7 @@ export class Scheduler extends EventEmitter {
      */
     async pauseTask(taskId: TaskId): Promise<void> {
         this.queue.pause(taskId);
-        await this.persist();
+        await this.persist(this.queue.get(taskId));
     }
 
     /**
@@ -330,7 +389,7 @@ export class Scheduler extends EventEmitter {
         if (task && task.status === "paused") {
             this.queue.resume(taskId);
             task.metadata.nextRun = this.getNextRunTime(task);
-            await this.persist();
+            await this.persist(task);
         }
     }
 
@@ -359,6 +418,10 @@ export class Scheduler extends EventEmitter {
      * @returns {SchedulerStats} Current scheduler statistics
      */
     getStats(): SchedulerStats {
+        // Counted on read rather than on every tick: the numbers are only
+        // ever observed here.
+        this.updateStats();
+
         if (this.startTime) {
             this.stats.uptime = Date.now() - this.startTime.getTime();
         }
@@ -415,13 +478,36 @@ export class Scheduler extends EventEmitter {
                     validateTimezone: this.options.timezone?.validate ?? true,
                 }
             );
-            return this.calculateNextRunTime(parsed);
+            return this.calculateNextRunTime(
+                parsed,
+                task.options.expression
+            );
         } catch (error: unknown) {
             const wrappedError = this.handleError(
                 `Invalid cron expression for task ${task.id}`,
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
+
+            if (error instanceof UnsatisfiableCronExpressionError) {
+                // Retrying this daily would re-run the whole search every day
+                // for an expression we already know can never match. Park it
+                // beyond the horizon so the task stays registered and
+                // runnable on demand, but never becomes due.
+                console.warn(
+                    `[ nuxt-task ] Task ${task.id} is scheduled `
+                    + `"${task.options.expression}", which can never run. `
+                    + `It will not be scheduled.`
+                );
+
+                const parked = new Date();
+                parked.setFullYear(
+                    parked.getFullYear()
+                    + Scheduler.MAX_NEXT_RUN_HORIZON_YEARS
+                );
+                return parked;
+            }
+
             return new Date(Date.now() + 24 * 60 * 60 * 1000);
         }
     }
@@ -434,7 +520,10 @@ export class Scheduler extends EventEmitter {
      * @returns {Date} The next valid run time
      * @throws {Error} If timezone conversion fails
      */
-    private calculateNextRunTime(parsed: ParsedExpression): Date {
+    private calculateNextRunTime(
+        parsed: ParsedExpression,
+        expression: string = "unknown"
+    ): Date {
         const now = new Date();
 
         const tzNow = TimezoneUtils.convertTimezone(
@@ -492,19 +581,55 @@ export class Scheduler extends EventEmitter {
             Saturday: 6,
         };
 
-        while (true) {
-            const hour = Number.parseInt(hourFormatter.format(candidate));
+        // Bound the search. An expression that can never match used to spin
+        // this loop forever, and because it is synchronous that wedged the
+        // whole process rather than just stalling one task.
+        const horizon = new Date(candidate.getTime());
+        horizon.setFullYear(
+            horizon.getFullYear() + Scheduler.MAX_NEXT_RUN_HORIZON_YEARS
+        );
+
+        while (candidate <= horizon) {
+            // ICU reports midnight as hour 24 in some builds, and cron hours
+            // are 0-23, so normalise before matching or arithmetic.
+            const hour =
+                Number.parseInt(hourFormatter.format(candidate)) % 24;
             const minute = Number.parseInt(minuteFormatter.format(candidate));
             const month = Number.parseInt(monthFormatter.format(candidate));
             const dayOfMonth = Number.parseInt(dayFormatter.format(candidate));
             const dayOfWeek = weekdayMap[weekdayFormatter.format(candidate)];
 
+            // Skip coarsely. Advancing a minute at a time makes a distant
+            // match unreachable in practice: a leap-day expression can be
+            // decades out, which is millions of iterations. The step sizes are
+            // derived from the clock reading in the task's own timezone and
+            // always land at or before the next boundary, so a valid slot can
+            // never be stepped over.
+            if (
+                !parsed.month.includes(month) ||
+                !parsed.dayOfMonth.includes(dayOfMonth) ||
+                !parsed.dayOfWeek.includes(dayOfWeek)
+            ) {
+                const minutesUntilNextDay = Math.max(
+                    1,
+                    (23 - hour) * 60 + (60 - minute)
+                );
+                candidate.setMinutes(
+                    candidate.getMinutes() + minutesUntilNextDay
+                );
+                continue;
+            }
+
+            if (!parsed.hour.includes(hour)) {
+                const minutesUntilNextHour = Math.max(1, 60 - minute);
+                candidate.setMinutes(
+                    candidate.getMinutes() + minutesUntilNextHour
+                );
+                continue;
+            }
+
             if (
                 parsed.minute.includes(minute) &&
-                parsed.hour.includes(hour) &&
-                parsed.dayOfMonth.includes(dayOfMonth) &&
-                parsed.month.includes(month) &&
-                parsed.dayOfWeek.includes(dayOfWeek) &&
                 candidate > tzNow.toJSDate()
             ) {
                 const convertedTimezone = TimezoneUtils.convertTimezone(
@@ -518,6 +643,11 @@ export class Scheduler extends EventEmitter {
 
             candidate.setMinutes(candidate.getMinutes() + 1);
         }
+
+        throw new UnsatisfiableCronExpressionError(
+            expression,
+            Scheduler.MAX_NEXT_RUN_HORIZON_YEARS
+        );
     }
 
     /**
@@ -531,8 +661,6 @@ export class Scheduler extends EventEmitter {
 
         try {
             const now = new Date();
-            this.updateStats();
-
             const tasks = this.queue.getAll();
 
             const tasksToRun = tasks.filter((task) => {
@@ -544,53 +672,56 @@ export class Scheduler extends EventEmitter {
                     return false;
                 }
 
+                // The parser only ever echoed this timezone back, so
+                // re-parsing every task on every tick bought nothing and made
+                // one bad timezone throw inside the filter, which stopped
+                // every other task from running that tick. The expression was
+                // already validated once when the task was added, and neither
+                // it nor the timezone can change afterwards.
                 const effectiveTimezone = this.options.timezone?.strict
                     ? this.options.timezone.type
                     : task.options.timezone ||
                       this.options.timezone?.type ||
                       "UTC";
 
-                const moduleOptions = moduleConfiguration.getModuleOptions();
-                const parsed = CronExpressionParser.parseCronExpression(
-                    task.options.expression,
-                    {
-                        timezone: {
-                            ...moduleOptions.timezone,
-                            type: effectiveTimezone,
-                        },
-                        validateTimezone:
-                            this.options.timezone?.validate ?? true,
-                    }
-                );
-
-                const tzNow = TimezoneUtils.convertTimezone(
-                    now,
-                    "UTC",
-                    parsed.timezone
-                );
-                const tzNextRun = TimezoneUtils.convertTimezone(
-                    task.metadata.nextRun,
-                    "UTC",
-                    parsed.timezone
-                );
-                if (
-                    typeof tzNow === "string" ||
-                    typeof tzNextRun === "string"
-                ) {
-                    throw new TypeError(
-                        "Unexpected string return from timezone conversion"
+                // Scoped to this task: a single unusable timezone used to
+                // throw out of the filter and cancel the whole tick, so one
+                // bad task silently stopped every other task from running.
+                try {
+                    const tzNow = TimezoneUtils.convertTimezone(
+                        now,
+                        "UTC",
+                        effectiveTimezone
                     );
+                    const tzNextRun = TimezoneUtils.convertTimezone(
+                        task.metadata.nextRun,
+                        "UTC",
+                        effectiveTimezone
+                    );
+
+                    if (
+                        typeof tzNow === "string" ||
+                        typeof tzNextRun === "string"
+                    ) {
+                        throw new TypeError(
+                            "Unexpected string return from timezone conversion"
+                        );
+                    }
+
+                    return tzNextRun.toJSDate() <= tzNow.toJSDate();
+                } catch (error: unknown) {
+                    this.emitError(
+                        this.handleError(
+                            `Failed to evaluate schedule for task ${task.id}`,
+                            error
+                        )
+                    );
+                    return false;
                 }
-
-                const isDue = tzNextRun.toJSDate() <= tzNow.toJSDate();
-
-                return isDue;
             });
 
             // Respect max concurrency
-            const currentRunning = tasks.filter(
-                (task) => task.status === "running"
-            ).length;
+            const currentRunning = this.queue.runningCount();
             const available = Math.max(
                 0,
                 this.options.maxConcurrent! - currentRunning
@@ -613,7 +744,7 @@ export class Scheduler extends EventEmitter {
                 "Scheduler tick failed",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
         }
     }
 
@@ -626,12 +757,12 @@ export class Scheduler extends EventEmitter {
     private updateNextRunTime(task: CronTask): void {
         task.metadata.nextRun = this.getNextRunTime(task);
 
-        this.persist().catch((error: unknown) => {
+        this.persist(task).catch((error: unknown) => {
             const wrappedError = this.handleError(
                 "Failed to persist task state",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
         });
     }
 
@@ -656,6 +787,7 @@ export class Scheduler extends EventEmitter {
                     task.metadata.nextRun < now
                 ) {
                     await this.queue.executeTask(task.id);
+                    this.updateNextRunTime(task);
                     task.metadata.nextRun = this.getNextRunTime(task);
                 }
             }
@@ -664,7 +796,7 @@ export class Scheduler extends EventEmitter {
                 "Failed to handle missed tasks",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
             throw wrappedError;
         }
     }
@@ -691,14 +823,17 @@ export class Scheduler extends EventEmitter {
      * @private
      * @description Updates the count of active and queued tasks
      */
-    private async persist(): Promise<void> {
+    private async persist(task?: CronTask): Promise<void> {
         try {
-            const tasks = this.queue.getAll();
+            // A single changed task writes only itself. Every mutation used to
+            // rewrite the entire queue, so adding one task to a queue of fifty
+            // issued fifty reads and fifty writes.
+            const tasks = task ? [task] : this.queue.getAll();
             await Promise.all(
                 tasks.map(async (task) => {
-                    const exsitingTask = await this.storage.get(task.id);
+                    const existingTask = await this.storage.get(task.id);
 
-                    if (exsitingTask) {
+                    if (existingTask) {
                         await this.storage.update(task.id, task);
                     } else {
                         await this.storage.add(task);
@@ -710,7 +845,7 @@ export class Scheduler extends EventEmitter {
                 "Failed to persist scheduler state",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
             throw wrappedError;
         }
     }
@@ -733,7 +868,7 @@ export class Scheduler extends EventEmitter {
                 "Failed to restore scheduler state",
                 error
             );
-            this.emit("error", wrappedError);
+            this.emitError(wrappedError);
             throw wrappedError;
         }
     }

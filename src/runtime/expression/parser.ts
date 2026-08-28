@@ -88,6 +88,17 @@ export class CronExpressionParser {
     value: string,
     context: string,
         ): number {
+    // Number() accepts hex ("0x10"), exponential ("1e1") and whitespace,
+    // several of which land inside a legal range and so parsed silently.
+    // A cron field value is a run of digits and nothing else.
+    if (!/^\d+$/.test(value)) {
+      throw new CronExpressionParseError(
+        "Invalid number format",
+        field,
+        context
+      );
+    }
+
     const num = Number(value)
                 if (isNaN(num)) {
       throw new CronExpressionParseError(
@@ -148,7 +159,17 @@ export class CronExpressionParser {
     field: CronExpressionField,
     value: string,
         ): ParseFieldResult {
-    const [rangeStr, stepStr] = value.split('/').map(s => s.trim())
+    const segments = value.split('/').map(s => s.trim())
+                if (segments.length > 2) {
+      // "5/10/20" used to parse as "5/10", quietly discarding the rest.
+      throw new CronExpressionParseError(
+        "Invalid step format",
+        field,
+        value
+      );
+    }
+
+    const [rangeStr, stepStr] = segments
                 if (!rangeStr || !stepStr) {
       throw new CronExpressionParseError(
         "Invalid step format",
@@ -168,8 +189,9 @@ export class CronExpressionParser {
 
     if (rangeStr === '*') {
       const { min, max } = CRON_RANGES[field]
-                        const startValue = field === 'month' ? 2 : min
-                        return this.createStepSequence(startValue, max, step)
+                        // Steps run from the start of the field's range. Month
+                        // used to start at 2, so "*/1" excluded January.
+                        return this.createStepSequence(min, max, step)
                 }
 
     if (!rangeStr.includes('-')) {

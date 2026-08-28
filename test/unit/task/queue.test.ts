@@ -50,12 +50,17 @@ describe('TaskQueue', () => {
         "retry",
         expect.any(Object),
                         );
-      expect(localTask.metadata.runCount).toBe(1)
+      // Two attempts were made within this scheduled run: the failure and the
+      // retry that succeeded. runCount counts attempts over the task lifetime.
+      expect(localTask.metadata.runCount).toBe(2)
                 })
 
                 it('should respect max retries', async () => {
-      // Set up a task that has reached its retry limit
+      // The retry budget is per scheduled run, so a lifetime runCount does not
+      // consume it. This used to assert the opposite: that a task which had
+      // already run four times would never execute again.
       localTask.metadata.runCount = 4
+      localTask.options.retryDelay = 1
                         localTask.execute = vi
         .fn()
         .mockRejectedValue(new Error('test error'))
@@ -63,7 +68,8 @@ describe('TaskQueue', () => {
                         queue.add(localTask)
                         await queue.executeTask(localTask.id)
 
-                        expect(localTask.execute).not.toHaveBeenCalled()
+      // maxRetries: 3 means the initial attempt plus three retries.
+      expect(localTask.execute).toHaveBeenCalledTimes(4)
                 })
         })
 
@@ -146,4 +152,275 @@ describe('TaskQueue', () => {
                         expect(queue.isRunning(localTask.id)).toBe(false)
                 })
         })
+
+    /**
+     * Regression tests for two bugs that between them made the whole
+     * retry/timeout/exclusive toolkit inoperative.
+     *
+     * Every pre-existing test above sets `timeout: 5000`, which is precisely
+     * why the no-timeout path went unnoticed: the race only misbehaves when no
+     * timeout is configured, and no production task set one.
+     */
+    describe('execution without a configured timeout', () => {
+        function makeTask(overrides: Partial<CronTask> = {}): CronTask {
+            return {
+                id: 'no-timeout',
+                name: 'No Timeout Task',
+                status: 'pending',
+                execute: vi.fn().mockResolvedValue('success'),
+                options: {
+                    expression: '* * * * *',
+                },
+                metadata: {
+                    runCount: 0,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
+                ...overrides,
+            } as CronTask
+        }
+
+        it('waits for the handler before reporting completion', async () => {
+            let resolveHandler: (v: unknown) => void = () => {}
+            const handlerDone = new Promise((r) => {
+                resolveHandler = r
+            })
+
+            const task = makeTask({ execute: vi.fn(() => handlerDone) as any })
+            queue.add(task)
+
+            const events: string[] = []
+            queue.on('completed', () => events.push('completed'))
+
+            const run = queue.executeTask(task.id)
+            await Promise.resolve()
+            await Promise.resolve()
+
+            // The handler has not resolved yet, so nothing may be reported.
+            expect(events).toEqual([])
+
+            resolveHandler('done')
+            await run
+
+            expect(events).toEqual(['completed'])
+        })
+
+        it('reports the real handler result', async () => {
+            const task = makeTask({ execute: vi.fn().mockResolvedValue('the-result') as any })
+            queue.add(task)
+
+            const results: unknown[] = []
+            queue.on('completed', (event: any) => results.push(event.result))
+
+            await queue.executeTask(task.id)
+
+            expect(results).toEqual(['the-result'])
+        })
+
+        it('emits failed when the handler rejects', async () => {
+            const task = makeTask({
+                execute: vi.fn().mockRejectedValue(new Error('boom')) as any,
+            })
+            queue.add(task)
+
+            const events: string[] = []
+            queue.on('completed', () => events.push('completed'))
+            queue.on('failed', () => events.push('failed'))
+
+            await queue.executeTask(task.id)
+
+            expect(events).toContain('failed')
+            expect(events).not.toContain('completed')
+        })
+
+        it('records lastError when the handler rejects', async () => {
+            const task = makeTask({
+                execute: vi.fn().mockRejectedValue(new Error('boom')) as any,
+            })
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            expect(task.metadata.lastError?.message).toBe('boom')
+            expect(task.status).toBe('failed')
+        })
+
+        it('reports the task as running while the handler is in flight', async () => {
+            let resolveHandler: (v: unknown) => void = () => {}
+            const handlerDone = new Promise((r) => {
+                resolveHandler = r
+            })
+
+            const task = makeTask({ execute: vi.fn(() => handlerDone) as any })
+            queue.add(task)
+
+            const run = queue.executeTask(task.id)
+            await Promise.resolve()
+
+            expect(queue.isRunning(task.id)).toBe(true)
+
+            resolveHandler('done')
+            await run
+
+            expect(queue.isRunning(task.id)).toBe(false)
+        })
+
+        it('honours exclusive while the handler is still in flight', async () => {
+            let resolveHandler: (v: unknown) => void = () => {}
+            const handlerDone = new Promise((r) => {
+                resolveHandler = r
+            })
+
+            const execute = vi.fn(() => handlerDone)
+            const task = makeTask({
+                execute: execute as any,
+                options: { expression: '* * * * *', exclusive: true },
+            })
+            queue.add(task)
+
+            const first = queue.executeTask(task.id)
+            await Promise.resolve()
+            await queue.executeTask(task.id)
+
+            expect(execute).toHaveBeenCalledTimes(1)
+
+            resolveHandler('done')
+            await first
+        })
+
+        it('still enforces a timeout when one is configured', async () => {
+            const task = makeTask({
+                execute: vi.fn(() => new Promise(() => {})) as any,
+                options: { expression: '* * * * *', timeout: 10 },
+            })
+            queue.add(task)
+
+            const events: string[] = []
+            queue.on('failed', (event: any) => events.push(event.error.message))
+
+            await queue.executeTask(task.id)
+
+            expect(events).toEqual(['task timeout'])
+        })
+    })
+
+    describe('retry budget is per scheduled run', () => {
+        function makeRetryTask(overrides: Record<string, any> = {}, runCount = 0): CronTask {
+            return {
+                id: 'retry-task',
+                name: 'Retry Task',
+                status: 'pending',
+                execute: vi.fn().mockResolvedValue('success'),
+                options: {
+                    expression: '* * * * *',
+                    retryDelay: 1,
+                    ...overrides,
+                },
+                metadata: {
+                    runCount,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                },
+            } as CronTask
+        }
+
+        it('runs a recurring task that has already run many times', async () => {
+            // runCount is a lifetime statistic. Gating on it meant
+            // `maxRetries: 3` stopped a cron task forever after four ticks.
+            const task = makeRetryTask({ maxRetries: 3 }, 10)
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            expect(task.execute).toHaveBeenCalledTimes(1)
+        })
+
+        it('runs a task once when maxRetries is 0', async () => {
+            // maxRetries: 0 reads as "do not retry", not "never run".
+            const task = makeRetryTask({ maxRetries: 0 })
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            expect(task.execute).toHaveBeenCalledTimes(1)
+        })
+
+        it('does not retry when maxRetries is 0 and the task fails', async () => {
+            const task = makeRetryTask({ maxRetries: 0 })
+            task.execute = vi.fn().mockRejectedValue(new Error('boom')) as any
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            expect(task.execute).toHaveBeenCalledTimes(1)
+        })
+
+        it('retries up to maxRetries within a single scheduled run', async () => {
+            const task = makeRetryTask({ maxRetries: 2 })
+            task.execute = vi.fn().mockRejectedValue(new Error('boom')) as any
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            // Initial attempt plus two retries.
+            expect(task.execute).toHaveBeenCalledTimes(3)
+        })
+
+        it('stops retrying as soon as an attempt succeeds', async () => {
+            const task = makeRetryTask({ maxRetries: 5 })
+            task.execute = vi
+                .fn()
+                .mockRejectedValueOnce(new Error('boom'))
+                .mockResolvedValue('success') as any
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            expect(task.execute).toHaveBeenCalledTimes(2)
+            expect(task.status).toBe('completed')
+        })
+
+        it('gives each scheduled run a fresh attempt budget', async () => {
+            const task = makeRetryTask({ maxRetries: 1 })
+            task.execute = vi.fn().mockRejectedValue(new Error('boom')) as any
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+            const afterFirstRun = (task.execute as any).mock.calls.length
+
+            await queue.executeTask(task.id)
+
+            expect(afterFirstRun).toBe(2)
+            expect(task.execute).toHaveBeenCalledTimes(4)
+        })
+
+        it('keeps runCount as a lifetime attempt statistic', async () => {
+            const task = makeRetryTask({ maxRetries: 1 }, 7)
+            task.execute = vi.fn().mockRejectedValue(new Error('boom')) as any
+            queue.add(task)
+
+            await queue.executeTask(task.id)
+
+            // Two attempts on top of the seven prior ones.
+            expect(task.metadata.runCount).toBe(9)
+        })
+
+        it('cancels a pending retry when the task is removed', async () => {
+            const task = makeRetryTask({ maxRetries: 3, retryDelay: 10000 })
+            task.execute = vi.fn().mockRejectedValue(new Error('boom')) as any
+            queue.add(task)
+
+            const run = queue.executeTask(task.id)
+            await Promise.resolve()
+            await Promise.resolve()
+
+            queue.remove(task.id)
+
+            // Must settle without waiting out the 10s retry delay.
+            await run
+
+            expect(task.execute).toHaveBeenCalledTimes(1)
+            expect(queue.isRunning(task.id)).toBe(false)
+        })
+    })
 })

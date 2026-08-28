@@ -300,7 +300,8 @@ describe('cron parser', () => {
                         expect(result.minute).toEqual([0, 5, 6, 7, 8, 9, 10, 15, 30, 45])
       expect(result.hour).toEqual([0, 12])
       expect(result.dayOfMonth).toEqual([1, 3, 5, 7, 9, 11, 13, 15])
-      expect(result.month).toEqual([2, 4, 6, 8, 10, 12])
+      // Month steps start at January, matching the other fields.
+      expect(result.month).toEqual([1, 3, 5, 7, 9, 11])
       expect(result.dayOfWeek).toEqual([1, 2, 3, 4, 5])
     })
 
@@ -440,8 +441,11 @@ describe('cron parser', () => {
 
   describe('month and day handling', () => {
                 it('handles month-specific patterns correctly', () => {
+                        // Steps run from the start of the field's range, so month
+                        // steps begin at January. They used to begin at February,
+                        // which made "*/1" silently exclude January.
                         expect(CronExpressionUtils.parseField('month', '*/2')).toEqual([
-                                2, 4, 6, 8, 10, 12,
+                                1, 3, 5, 7, 9, 11,
                         ])
       expect(CronExpressionUtils.parseField('month', '2-12/3')).toEqual([
                                 2, 5, 8, 11,
@@ -581,7 +585,7 @@ describe('cron parser', () => {
                                         0, 4, 8, 12, 16, 20,
                                 ])
         expect(CronExpressionUtils.parseField('month', '*/3')).toEqual([
-                                        2, 5, 8, 11,
+                                        1, 4, 7, 10,
                                 ])
       })
 
@@ -771,6 +775,9 @@ describe('cron parser', () => {
 
     describe('numeric value parsing edge cases', () => {
                         it('should handle various numeric formats', () => {
+                                // A cron field value is digits and nothing else. Signed,
+                                // decimal and exponential forms are not valid cron, and
+                                // accepting them let "0x10" through as minute 16.
                                 expect(() =>
                                         CronExpressionUtils['parseNumericValue'](
                                                 "minute",
@@ -784,21 +791,21 @@ describe('cron parser', () => {
                                                 "5.0",
                                                 "5.0"
                                         )
-                                ).not.toThrow()
+                                ).toThrow()
         expect(() =>
                                         CronExpressionUtils['parseNumericValue'](
                                                 "minute",
                                                 "+5",
                                                 "+5"
                                         )
-                                ).not.toThrow()
+                                ).toThrow()
         expect(() =>
                                         CronExpressionUtils['parseNumericValue'](
                                                 "minute",
                                                 "-0",
                                                 "-0"
                                         )
-                                ).not.toThrow()
+                                ).toThrow()
       })
 
       it('should handle invalid numeric values', () => {

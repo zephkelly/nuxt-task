@@ -17,6 +17,16 @@ export const DEFAULT_MODULE_OPTIONS: ModuleOptions = {
     },
 } satisfies ModuleOptions;
 
+/**
+ * The single key the module's options live under in the Nitro runtime config.
+ *
+ * Both halves of the round trip import this. They used to hard-code the key
+ * separately and disagreed — the module published `nuxtTask` while the
+ * runtime read `cron` — so the runtime never found the consumer's config and
+ * silently fell back to defaults.
+ */
+export const RUNTIME_CONFIG_KEY = "nuxtTask" as const;
+
 export class ModuleConfiguration {
     private options: ModuleOptions;
 
@@ -29,8 +39,15 @@ export class ModuleConfiguration {
     }
 
     public getModuleOptions(runtimeConfig?: RuntimeConfig): ModuleOptions {
-        if (runtimeConfig) {
-            this.options = runtimeConfig.cron;
+        const published = runtimeConfig?.[
+            RUNTIME_CONFIG_KEY
+        ] as ModuleOptions | undefined;
+
+        // Only adopt published options when they actually exist. Assigning
+        // unconditionally replaced good options with undefined whenever the
+        // runtime config did not carry the key.
+        if (published) {
+            this.options = published;
         }
 
         return this.options;
@@ -54,3 +71,16 @@ export class ModuleConfiguration {
 export const moduleConfiguration = new ModuleConfiguration(
     DEFAULT_MODULE_OPTIONS
 );
+
+/**
+ * Resolves module options from a Nitro runtime config, falling back to the
+ * shared singleton when the config does not carry them.
+ *
+ * @param {Record<string, any>} [runtimeConfig] - The Nitro runtime config
+ * @returns {ModuleOptions} The effective module options
+ */
+export function resolveModuleOptions(
+    runtimeConfig?: Record<string, any>
+): ModuleOptions {
+    return moduleConfiguration.getModuleOptions(runtimeConfig as any);
+}

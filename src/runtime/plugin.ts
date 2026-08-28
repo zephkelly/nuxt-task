@@ -1,7 +1,7 @@
 import { defineNitroPlugin } from 'nitropack/dist/runtime/plugin'
 import { createServerStorage } from './storage/server'
 import { Scheduler } from './scheduler'
-import { moduleConfiguration } from './config'
+import { resolveModuleOptions } from './config'
 import { useRuntimeConfig } from '#imports'
 
 export interface TaskDefinition {
@@ -11,13 +11,6 @@ export interface TaskDefinition {
     schedule: string
     options?: Record<string, any>
     run: (args: any) => Promise<any>
-}
-
-export interface PluginContext {
-    config: any
-    storage: any
-    scheduler: any
-    taskDefinitions: TaskDefinition[]
 }
 
 /**
@@ -108,7 +101,7 @@ export async function addTasksToScheduler(
  */
 export async function initializePlugin(nitroApp: any): Promise<void> {
     const config = useRuntimeConfig()
-    const moduleOptions = config.cron || moduleConfiguration.getModuleOptions()
+    const moduleOptions = resolveModuleOptions(config)
 
     // Check if we should skip
     const skipCheck = shouldSkipInitialization(moduleOptions)

@@ -4,7 +4,7 @@ import type {
   FlexibleTimezoneOptions,
   StrictTimezoneOptions,
 } from './../utils/timezone'
-import type { CronTaskEvent } from '~/src/runtime/task/types'
+import type { CronTaskEvent } from '../task/types'
 
 export interface SchedulerBaseOptions {
   tickInterval?: number
@@ -95,30 +95,3 @@ export interface TypedEventEmitter<
 }
 
 // Helper functions
-export function createStrictModuleOptions(
-  options: ModuleOptions & { timezone?: StrictTimezoneOptions },
-): ModuleOptions & { timezone?: StrictTimezoneOptions } {
-  return {
-    ...options,
-    storage: options.storage ?? { type: 'memory' },
-    timezone: {
-      type: options.timezone?.type ?? 'UTC',
-      validate: options.timezone?.validate ?? true,
-      strict: true,
-    },
-  };
-}
-
-export function createFlexibleModuleOptions(
-  options: ModuleOptions & { timezone?: FlexibleTimezoneOptions },
-): ModuleOptions & { timezone?: FlexibleTimezoneOptions } {
-  return {
-    ...options,
-    storage: options.storage ?? { type: 'memory' },
-    timezone: {
-      type: options.timezone?.type ?? 'UTC',
-      validate: options.timezone?.validate ?? true,
-      strict: false,
-    },
-  };
-}
