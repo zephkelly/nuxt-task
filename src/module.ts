@@ -26,11 +26,34 @@ import type {
 } from "./runtime/utils/timezone";
 
 import type { StorageType } from "./runtime/storage";
+import type { TaskInfo } from "./runtime/server/runs/types";
+import {
+    isScheduleParked,
+    resolveCustomTimezone,
+} from "./runtime/server/runs/schedule";
+
+/** The run API's exports, auto-imported in the server context. */
+export const RUN_API_IMPORTS = [
+    "triggerTask",
+    "getCurrentTaskRun",
+    "getRunningTasks",
+    "isTaskRunning",
+    "listTasks",
+    "nextRun",
+    "TaskAlreadyRunningError",
+    "TaskNotFoundError",
+] as const;
 
 export interface BaseModuleOptions {
     serverTasks?: boolean;
     clientTasks?: boolean;
     tasksDir?: string;
+    /**
+     * Auto-import the run API (`triggerTask`, `listTasks`, `nextRun`, ...)
+     * in the server context. Set false if the names clash with your own and
+     * import from `nuxt-task/runtime` instead. Default true.
+     */
+    autoImports?: boolean;
     experimental?: {
         tasks?: boolean;
     };
@@ -73,6 +96,8 @@ export default defineNuxtModule<ModuleOptions>({
 
         if (!moduleOptions.experimental?.tasks) {
             addServerPlugin(resolver.resolve("./runtime/plugin"));
+        } else {
+            addServerPlugin(resolver.resolve("./runtime/server/plugins/native"));
         }
 
         nuxt.hook("nitro:build:before", () => {
@@ -133,9 +158,25 @@ async function setupModuleBasics(
     nuxt.options.alias["#nuxt-task"] = runtimePath;
     nuxt.options.alias["#tasks"] = join(nuxt.options.buildDir, "tasks.virtual");
 
-    // NOTE: Auto-imports don't work during task loading (which happens during Nitro config)
-    // Users must explicitly import: import { defineTaskHandler } from "nuxt-task/handler"
-    // This is properly exported in package.json
+    // defineTaskHandler is not auto-imported: import it from
+    // "nuxt-task/handler" or "#nuxt-task". The run API is.
+    const runApiPath = resolver.resolve("./runtime/server/runs/index");
+
+    if (moduleOptions.autoImports !== false) {
+        addServerImports(
+            RUN_API_IMPORTS.map((name) => ({ name, from: runApiPath }))
+        );
+    }
+
+    // Load the NitroRuntimeHooks augmentation into the server's types, so
+    // `nitroApp.hooks.hook("task:run:finish", ...)` is typed without an
+    // import.
+    // @ts-ignore
+    nuxt.hook("nitro:prepare:types", ({ references }) => {
+        references.push({
+            path: resolver.resolve("./runtime/server/runs/types"),
+        });
+    });
 
     // @ts-ignore
     nuxt.hook("prepare:types", ({ references }) => {
@@ -194,6 +235,54 @@ function setupNitroBasics(nitroConfig: any, resolver: any) {
 
     nitroConfig.virtual = nitroConfig.virtual || {};
     nitroConfig.virtual["#nuxt-task/types"] = `export * from '${typesPath}'`;
+
+    // Always present so the runtime plugins can import it; replaced with the
+    // scanned registry once the tasks directory has been read.
+    nitroConfig.virtual["#nuxt-task/registry"] = generateRegistryModule([]);
+}
+
+/**
+ * Builds the runtime registry from statically extracted task metadata.
+ * `parked` is decided by the scheduler that fires the task in this mode:
+ * croner in native mode, the module's own calculator in custom mode.
+ *
+ * @param {TaskMetaInfo[]} taskMetas - Extracted metadata
+ * @param {"native" | "custom"} mode - Execution mode
+ * @param {ModuleOptions} options - Module options
+ * @returns {TaskInfo[]} Registry entries
+ */
+export function buildTaskRegistry(
+    taskMetas: TaskMetaInfo[],
+    mode: "native" | "custom",
+    options: ModuleOptions
+): TaskInfo[] {
+    return taskMetas.map((taskMeta) => {
+        const taskOptions = taskMeta.options ?? {};
+
+        return {
+            name: taskMeta.name,
+            metaName: taskMeta.metaName,
+            description: taskMeta.description || undefined,
+            schedule: taskMeta.schedule,
+            options: taskOptions,
+            parked: isScheduleParked(
+                taskMeta.schedule,
+                mode,
+                mode === "custom"
+                    ? resolveCustomTimezone(options, taskOptions.timezone)
+                    : undefined,
+                options
+            ),
+        };
+    });
+}
+
+/**
+ * @param {TaskInfo[]} entries - Registry entries
+ * @returns {string} Source of the `#nuxt-task/registry` virtual module
+ */
+export function generateRegistryModule(entries: TaskInfo[]): string {
+    return `export const taskRegistry = ${JSON.stringify(entries)};\n`;
 }
 
 /**
@@ -230,9 +319,15 @@ async function setupVirtualTasksModule(
     }
 
     const virtualModule = await generateVirtualTasksModule(tasksDir);
+    const taskMetas = await extractTaskMetas(
+        await scanTasksDirectory(tasksDir)
+    );
 
     nitroConfig.virtual = nitroConfig.virtual || {};
     nitroConfig.virtual["#tasks"] = virtualModule;
+    nitroConfig.virtual["#nuxt-task/registry"] = generateRegistryModule(
+        buildTaskRegistry(taskMetas, "custom", options)
+    );
 }
 
 /**
@@ -275,8 +370,12 @@ export async function generateVirtualTasksModule(tasksDir: string) {
         .map((task, i) => `import task_${i} from ${JSON.stringify(task.path)};`)
         .join("\n");
     const list = tasks.map((_, i) => `task_${i}`).join(", ");
+    // Path names, index-aligned with taskDefinitions, so the custom
+    // scheduler registers and reports each task by the name runTask uses.
+    const names = JSON.stringify(tasks.map((task) => task.name));
 
-    return `${imports}\n\nexport const taskDefinitions = [${list}];\n`;
+    return `${imports}\n\nexport const taskDefinitions = [${list}];\n`
+        + `export const taskNames = ${names};\n`;
 }
 
 /**
@@ -417,6 +516,11 @@ export async function configureNitroTasks(
         }, {} as Record<string, string[]>);
 
         nitroConfig.scheduledTasks = scheduledTasksObject;
+
+        nitroConfig.virtual = nitroConfig.virtual || {};
+        nitroConfig.virtual["#nuxt-task/registry"] = generateRegistryModule(
+            buildTaskRegistry(taskMetas, "native", options)
+        );
     } catch (error) {
         console.warn("Error configuring Nitro tasks:", error);
         nitroConfig.tasks = {};

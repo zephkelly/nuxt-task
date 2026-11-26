@@ -22,6 +22,7 @@ export default defineVitestConfig({
     resolve: {
         alias: {
             '#tasks': fileURLToPath(new URL('./test/mocks/tasks.ts', import.meta.url)),
+            '#nuxt-task/registry': fileURLToPath(new URL('./test/mocks/registry.ts', import.meta.url)),
         },
     },
 })

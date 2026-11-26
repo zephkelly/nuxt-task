@@ -44,6 +44,7 @@ export interface CronTask<T = any> {
   execute: (args: {
     name: string
     scheduledTime: number
+    scheduledFor?: Date | null
     timezone: string
   }) => Promise<T>
   options: CronTaskOptions

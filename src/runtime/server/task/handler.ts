@@ -2,6 +2,8 @@ import { moduleConfiguration } from "../../config";
 import type { CronTaskOptions } from "../../task/types";
 import CronExpressionParser from "../../expression/parser";
 import type { ModuleOptions } from "../../../module";
+import { executeTaskRun } from "../runs/executor";
+import { getRunState } from "../runs/state";
 
 export interface TaskContext {
     payload?: Record<string, any>;
@@ -24,55 +26,25 @@ export interface NuxtCronTaskDefinition<T = any> {
 }
 
 /**
- * Attempts allowed for one scheduled run: the initial attempt plus retries.
- * An unset `maxRetries` means a single attempt, and `maxRetries: 0` means
- * "do not retry", never "do not run".
- *
- * @param {number | undefined} maxRetries - Configured retry count
- * @returns {number} Attempts allowed, always at least one
+ * Symbol-keyed entry the custom scheduler and the trigger adapter use to run
+ * a definition with trusted inputs (its path name, the tick it belongs to)
+ * that never travel through the handler's context argument.
  */
-function resolveMaxAttempts(maxRetries?: number | null): number {
-    if (maxRetries === undefined || maxRetries === null) {
-        return 1;
-    }
+export const RUN_TASK_INTERNAL = Symbol.for("nuxt-task:run-internal");
 
-    return Math.max(0, maxRetries) + 1;
+export interface InternalRunInput {
+    /** Path name. */
+    name?: string;
+    /** Set by the custom scheduler for a scheduled run. */
+    scheduled?: { scheduledFor: Date | null };
 }
 
 /**
- * Races a handler against its timeout, if one is configured.
- *
- * Only races when a timeout is set: racing against an already-resolved
- * promise would resolve every untimed task instantly, before its handler had
- * finished.
- *
- * @param {Promise<any>} execution - The in-flight handler promise
- * @param {number | undefined} timeout - Timeout in milliseconds
- * @returns {Promise<any>} The handler's result
+ * Keeps the long-standing `run()` return shape, `{ success: true, ...result }`,
+ * which `runTask` callers read. Hooks and triggerTask() get the raw result.
  */
-async function withTimeout(
-    execution: Promise<any>,
-    timeout?: number
-): Promise<any> {
-    if (!timeout) {
-        return await execution;
-    }
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    try {
-        return await Promise.race([
-            execution,
-            new Promise((_, reject) => {
-                timer = setTimeout(
-                    () => reject(new Error("task timeout")),
-                    timeout
-                );
-            }),
-        ]);
-    } finally {
-        if (timer) clearTimeout(timer);
-    }
+function toRunResult(result: any) {
+    return { success: true, ...result };
 }
 
 export function defineTaskHandler<T = any>(
@@ -103,10 +75,25 @@ export function defineTaskHandler<T = any>(
         options: definition.options || {},
     };
 
+    const options = definition.options || {};
+    const metaName = definition.meta?.name;
+
+    // The object this call returns; the custom plugin records its path name
+    // against it. A holder, because the methods are built before it exists.
+    const self: { task?: object } = {};
+
+    // Path name for a run: the caller's, else the one the custom plugin
+    // recorded for this definition, else meta.name as a last resort.
+    const resolveName = (name?: string): string =>
+        name
+        ?? (self.task && getRunState().definitionNames.get(self.task))
+        ?? metaName;
+
     if (config?.experimental?.tasks) {
-        return {
+        const task = {
             ...baseTask,
-            // Return the handler directly for Nitro tasks
+            // Nitro's runTask calls this, from its schedule runner or from a
+            // direct call, with the path name it registered the task under.
             async run({
                 name,
                 payload,
@@ -122,71 +109,36 @@ export function defineTaskHandler<T = any>(
                 // the time run() is reached. Re-checking it with the stricter
                 // in-module parser rejects valid schedules (`0 0 * * 7`,
                 // `@daily`, six-field) on every single fire, permanently.
-                const options = definition.options || {};
-                const maxAttempts = resolveMaxAttempts(options.maxRetries);
-                let lastError: unknown;
+                const result = await executeTaskRun({
+                    name: resolveName(name),
+                    metaName,
+                    schedule: definition.schedule,
+                    options,
+                    invoke: () =>
+                        definition.handler({
+                            ...(context || {}),
+                            ...(payload || {}),
+                            // Trusted fields are pinned last so that a
+                            // payload key cannot shadow them.
+                            name: name,
+                            timezone:
+                                options.timezone
+                                ?? config?.timezone?.type,
+                        }),
+                });
 
-                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                    try {
-                        const result = await withTimeout(
-                            definition.handler({
-                                ...(context || {}),
-                                ...(payload || {}),
-                                // Trusted fields are pinned last so that a
-                                // payload key cannot shadow them.
-                                name: name,
-                                timezone:
-                                    options.timezone
-                                    ?? config?.timezone?.type,
-                            }),
-                            options.timeout
-                        );
-
-                        return { success: true, ...result };
-                    } catch (error) {
-                        lastError = error;
-
-                        if (attempt >= maxAttempts) break;
-
-                        await new Promise((resolve) =>
-                            setTimeout(resolve, options.retryDelay ?? 1000)
-                        );
-                    }
-                }
-
-                // Rethrow so Nitro records the run as failed. Resolving here
-                // reported every failure to Nitro as a success and left
-                // production with no failure signal at all.
-                console.error(
-                    `[ nuxt-task ] Task "${definition.meta?.name}" failed:`,
-                    lastError
-                );
-
-                throw lastError instanceof Error
-                    ? lastError
-                    : new Error("Unknown error in task execution");
+                return toRunResult(result);
             },
         };
+
+        self.task = task;
+        return task;
     }
 
-    return {
+    const task = {
         ...baseTask,
         async run(context: TaskContext) {
-            try {
-                CronExpressionParser.parseCronExpression(definition.schedule, {
-                    timezone: config?.timezone,
-                });
-                const result = await definition.handler(context);
-                return {
-                    success: true,
-                    ...result
-                }
-            }
-            catch (error) {
-                throw error instanceof Error
-                    ? error
-                    : new Error("Unknown error in task execution");
-            }
+            return toRunResult(await runCustom(context));
         },
         _custom: {
             type: "nuxt-task",
@@ -194,4 +146,31 @@ export function defineTaskHandler<T = any>(
             virtual: true,
         },
     };
+
+    // The context passes through to the handler untouched, as before; the
+    // run's identity comes from `input`, never from the context.
+    const runCustom = (context: TaskContext, input: InternalRunInput = {}) =>
+        executeTaskRun({
+            name: resolveName(input.name),
+            metaName,
+            schedule: definition.schedule,
+            scheduled: input.scheduled,
+            options,
+            preflight: () => {
+                CronExpressionParser.parseCronExpression(definition.schedule, {
+                    timezone: config?.timezone,
+                });
+            },
+            invoke: () => definition.handler(context),
+        });
+
+    // Non-enumerable, so spreading or comparing a definition is unchanged.
+    Object.defineProperty(task, RUN_TASK_INTERNAL, {
+        value: async (context: TaskContext, input: InternalRunInput) =>
+            toRunResult(await runCustom(context, input)),
+        enumerable: false,
+    });
+
+    self.task = task;
+    return task;
 }

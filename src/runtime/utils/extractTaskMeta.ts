@@ -17,7 +17,42 @@ export type TaskMetaInfo = {
     description: string;
     /** Undefined unless `schedule` is a static string literal in source. */
     schedule?: string;
+    /** `meta.name` when it is a string literal. */
+    metaName?: string;
+    /** The `options` entries whose values are string/number/boolean literals. */
+    options: Record<string, string | number | boolean>;
 };
+
+/**
+ * Reads the literal scalar entries of a magicast object proxy. Anything
+ * computed (an identifier, a call, a nested object) is left out, because its
+ * value is only known when the file runs.
+ */
+function readLiteralOptions(
+    options: unknown
+): Record<string, string | number | boolean> {
+    const out: Record<string, string | number | boolean> = {};
+
+    if (!options || typeof options !== "object") return out;
+
+    try {
+        for (const key of Object.keys(options)) {
+            const value = (options as Record<string, unknown>)[key];
+
+            if (
+                typeof value === "string"
+                || typeof value === "number"
+                || typeof value === "boolean"
+            ) {
+                out[key] = value;
+            }
+        }
+    } catch {
+        // A shape magicast cannot enumerate: report no literal options.
+    }
+
+    return out;
+}
 
 /**
  * Parse a task file with magicast and read the literal `schedule`/`description`
@@ -59,6 +94,9 @@ export async function extractTaskMeta(
                     ? arg.meta.description
                     : "",
             schedule,
+            metaName:
+                typeof arg.meta.name === "string" ? arg.meta.name : undefined,
+            options: readLiteralOptions(arg.options),
         };
     } catch (error) {
         console.warn(`Failed to parse task ${task.name}:`, error);

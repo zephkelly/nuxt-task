@@ -215,6 +215,9 @@ export class TaskQueue extends EventEmitter {
         const execution = task.execute({
             name: task.name,
             scheduledTime: new Date().getTime(),
+            // The occurrence this run belongs to. The scheduler only moves
+            // nextRun forward after the run, so it still names the due tick.
+            scheduledFor: task.metadata.nextRun ?? null,
             timezone: task.options.timezone || 'UTC',
         })
 

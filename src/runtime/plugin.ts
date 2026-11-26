@@ -2,6 +2,14 @@ import { defineNitroPlugin } from 'nitropack/dist/runtime/plugin'
 import { createServerStorage } from './storage/server'
 import { Scheduler } from './scheduler'
 import { resolveModuleOptions } from './config'
+import { RUN_TASK_INTERNAL } from './server/task/handler'
+import type { InternalRunInput } from './server/task/handler'
+import { attachTaskRuntime, getRunState } from './server/runs/state'
+import type { TriggerAdapter } from './server/runs/state'
+import { flushTaskRunHooks } from './server/runs/hooks'
+import { TaskNotFoundError } from './server/runs/errors'
+import { resolveCustomTimezone } from './server/runs/schedule'
+import type { TaskInfo } from './server/runs/types'
 import { useRuntimeConfig } from '#imports'
 
 export interface TaskDefinition {
@@ -29,6 +37,92 @@ export async function loadTasks(): Promise<TaskDefinition[]> {
         )
     } catch {
         return []
+    }
+}
+
+export interface NamedTaskDefinition {
+    /** Path name, e.g. `db:migrate`. */
+    name: string
+    definition: TaskDefinition
+}
+
+/**
+ * Load tasks from `#tasks` paired with their path names. Falls back to
+ * `meta.name` when the virtual module predates `taskNames`.
+ */
+export async function loadNamedTasks(): Promise<NamedTaskDefinition[]> {
+    try {
+        // @ts-ignore - virtual file
+        const mod = await import('#tasks')
+        const defs: any[] = mod.taskDefinitions || []
+        const names: unknown[] = mod.taskNames || []
+
+        return defs
+            .map((definition, i) => ({
+                definition,
+                name: typeof names[i] === 'string'
+                    ? names[i] as string
+                    : definition?.meta?.name,
+            }))
+            .filter(
+                ({ definition, name }) =>
+                    definition
+                    && definition.meta
+                    && typeof definition.meta.name === 'string'
+                    && typeof name === 'string',
+            )
+    } catch {
+        return []
+    }
+}
+
+/**
+ * Load the build-time task registry. Empty when it cannot be read.
+ */
+export async function loadTaskRegistry(): Promise<TaskInfo[]> {
+    try {
+        // @ts-ignore - virtual file
+        const mod = await import('#nuxt-task/registry')
+        return Array.isArray(mod.taskRegistry) ? mod.taskRegistry : []
+    } catch {
+        return []
+    }
+}
+
+function getInternalRun(definition: any):
+    | ((context: any, input: InternalRunInput) => Promise<any>)
+    | undefined {
+    const run = definition?.[RUN_TASK_INTERNAL]
+    return typeof run === 'function' ? run : undefined
+}
+
+/**
+ * Trigger adapter for custom mode: runs a definition directly, inside the
+ * caller's trigger context, with the payload merged as native mode does.
+ */
+export function createCustomTriggerAdapter(
+    named: NamedTaskDefinition[],
+    moduleOptions: any,
+): TriggerAdapter {
+    const byName = new Map(named.map(t => [t.name, t.definition]))
+
+    return async (name, { payload, context }) => {
+        const definition = byName.get(name)
+        if (!definition) throw new TaskNotFoundError(name)
+
+        const ctx = {
+            ...context,
+            ...payload,
+            name,
+            scheduledTime: Date.now(),
+            timezone: resolveCustomTimezone(
+                moduleOptions,
+                definition.options?.timezone,
+            ),
+        }
+
+        const internal = getInternalRun(definition)
+        return internal ? internal(ctx, { name }) : definition.run(ctx)
     }
 }
 
@@ -80,17 +174,45 @@ export async function initializeScheduler(
 
 /**
  * Add tasks to the scheduler
- * Extracted for easier testing
+ *
+ * Definitions built by defineTaskHandler run through the shared run
+ * executor, which owns retries and timeout so that retries count as one run.
+ * The queue therefore gets those options stripped, and the scheduler task is
+ * named by its path name. Other shapes are added as before.
  */
 export async function addTasksToScheduler(
     scheduler: any,
-    taskDefinitions: TaskDefinition[]
+    taskDefinitions: TaskDefinition[],
+    taskNames: string[] = [],
 ): Promise<void> {
-    for (const task of taskDefinitions) {
+    for (const [i, task] of taskDefinitions.entries()) {
+        const internal = getInternalRun(task)
+
+        if (!internal) {
+            await scheduler.addTask({
+                name: task.meta.name,
+                options: { expression: task.schedule, ...task.options },
+                execute: task.run,
+            })
+            continue
+        }
+
+        const name = taskNames[i] ?? task.meta.name
+        const {
+            maxRetries: _maxRetries,
+            timeout: _timeout,
+            retryDelay: _retryDelay,
+            ...queueOptions
+        } = task.options || {}
+
         await scheduler.addTask({
-            name: task.meta.name,
-            options: { expression: task.schedule, ...task.options },
-            execute: task.run,
+            name,
+            options: { expression: task.schedule, ...queueOptions },
+            execute: (ctx: any) =>
+                internal(ctx, {
+                    name,
+                    scheduled: { scheduledFor: ctx?.scheduledFor ?? null },
+                }),
         })
     }
 }
@@ -114,9 +236,21 @@ export async function initializePlugin(nitroApp: any): Promise<void> {
         return
     }
 
-    // Load tasks
-    const taskDefinitions = await loadTasks()
-    if (taskDefinitions.length === 0) {
+    // Load tasks, and connect the run API before anything can trigger one
+    const named = await loadNamedTasks()
+    const state = getRunState()
+    for (const { name, definition } of named) {
+        state.definitionNames.set(definition, name)
+    }
+
+    attachTaskRuntime({
+        nitroApp,
+        mode: 'custom',
+        adapter: createCustomTriggerAdapter(named, moduleOptions),
+        registry: await loadTaskRegistry(),
+    })
+
+    if (named.length === 0) {
         console.warn('No tasks found, skipping scheduler.')
         return
     }
@@ -125,14 +259,20 @@ export async function initializePlugin(nitroApp: any): Promise<void> {
     const { storage, scheduler } = await initializeScheduler(moduleOptions)
 
     // Add tasks
-    await addTasksToScheduler(scheduler, taskDefinitions)
+    await addTasksToScheduler(
+        scheduler,
+        named.map(t => t.definition),
+        named.map(t => t.name),
+    )
 
     // Start scheduler
     await scheduler.start()
 
-    // Register cleanup
+    // Register cleanup. Flush run hooks last so a graceful shutdown does not
+    // drop the final finish events.
     nitroApp.hooks.hook('close', async () => {
         await scheduler.stop()
+        await flushTaskRunHooks()
     })
 
     // Attach to nitroApp

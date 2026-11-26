@@ -10,6 +10,10 @@
             "types": "./dist/types.d.ts",
             "import": "./dist/module.mjs"
         },
+        "./runtime": {
+            "types": "./dist/runtime/index.d.ts",
+            "import": "./dist/runtime/index.js"
+        },
         "./runtime/*": "./dist/runtime/*",
         "./handler": {
             "types": "./dist/runtime/server/task/handler.d.ts",

@@ -9,6 +9,7 @@ A reliable cron job library for Nuxt with Nitro task integration, multi-timezone
 - Multi-timezone scheduling backed by Luxon, configurable per task or at the module level.
 - Pluggable storage abstraction with an in-memory backend by default, and Redis reserved as an optional peer dependency for a future backend.
 - Automatic task discovery from `server/tasks`, including nested subdirectories.
+- Run tracking in both modes: start/finish hooks, a per-run context for logging, a task registry, next-run times, and a manual trigger that refuses to double-start.
 - Task files support the full range of Nitro server-file imports: relative, aliased (`~`, `~~`, `#imports`), server auto-imports, and node_modules dependencies.
 - TypeScript types for the module options, the task definition helper, and the scheduler.
 
@@ -183,7 +184,9 @@ Two things to keep in mind:
 
 ## Triggering tasks on demand
 
-Nitro exposes a global `runTask` helper that invokes a registered task by name. It relies on Nitro's task runner, so it is available when you opt into experimental mode with `experimental.tasks: true`:
+To start a task by hand in either mode, use `triggerTask` (see [Starting a task by hand](#starting-a-task-by-hand)). It records the run as manual and refuses to start a task that is already running.
+
+Nitro also exposes a global `runTask` helper that invokes a registered task by name. It relies on Nitro's task runner, so it is available when you opt into experimental mode with `experimental.tasks: true`:
 
 ```ts
 export default defineNuxtConfig({
@@ -210,6 +213,167 @@ export default defineEventHandler(async () => {
 ```
 
 The name passed to `runTask` is the derived name described in [Nested task directories](#nested-task-directories), so a file at `server/tasks/example.ts` is triggered as `example` and one at `server/tasks/db/migrate.ts` as `db:migrate`. `runTask` returns an object whose `result` field holds whatever your handler returned.
+
+## Observing and controlling runs
+
+nuxt-task tracks every run in both execution modes, so an app can list its tasks, see what is running, keep a history, tie log lines to a run and start a task by hand, without wrapping each task. The API is auto-imported in server code and is also exported from `nuxt-task/runtime`:
+
+```ts
+import {
+  triggerTask,
+  getCurrentTaskRun,
+  getRunningTasks,
+  isTaskRunning,
+  listTasks,
+  nextRun,
+  TaskAlreadyRunningError,
+} from 'nuxt-task/runtime'
+```
+
+Every name here is the task's **path name**, the one `runTask` takes: `server/tasks/notifications/daily-reminders.ts` is `notifications:daily-reminders`. The free-text `meta.name` is carried alongside as `metaName`.
+
+### Runs
+
+Each run is one call of a task, retries included. It looks like this:
+
+| Field | Meaning |
+|---|---|
+| `runId` | A UUID, or the id you passed to `triggerTask`. |
+| `name` / `metaName` | Path name and `meta.name`. |
+| `trigger` | `'schedule'` or `'manual'`. Set from how the run was started, never from the payload. |
+| `triggeredBy` | The opaque string you passed to `triggerTask`. |
+| `scheduledFor` | The cron tick a scheduled run belongs to; `null` for a manual run. |
+| `startedAt` / `finishedAt` | Dates. `finishedAt` is `null` while running. |
+| `attempt` / `maxAttempts` | Current attempt, starting at 1, and `maxRetries + 1`. |
+| `status` | `running`, `succeeded`, `failed`, `skipped` or `timed-out`. |
+| `meta` | A mutable object for your own data. |
+
+A handler that returns `{ skipped: true }` ends as `skipped`. A run is `timed-out` when its last attempt exceeded `options.timeout`. A timeout does not cancel the handler: the run closes and the handler keeps going in the background. Whatever the handler returns or throws is passed through as before.
+
+A run is `manual` when it was started by `triggerTask`, started from inside another task's handler, or belongs to a task with no schedule. Anything else is `schedule`. In native mode that includes a direct `runTask()` call and Nitro's dev-only `/_nitro/tasks/:name` route, because nuxt-task cannot tell those apart from Nitro's scheduler. Start manual runs with `triggerTask`.
+
+### Hooks
+
+Three hooks fire on `nitroApp.hooks`, typed on `NitroRuntimeHooks`:
+
+- `task:run:start`, with `{ run }`
+- `task:run:attempt-failed`, with `{ run, attempt, error, retryInMs }`, before each retry
+- `task:run:finish`, with `{ run, status, result, error, durationMs }`. `result` is the handler's raw return value.
+
+Hooks never slow down or fail a task. The task does not wait for them. A listener that throws is logged and skipped, and the other listeners still run. For a given run, `finish` listeners start only after its `start` listeners have settled, so an insert cannot race the matching update. Each event carries a snapshot of the run, so later changes do not alter what a listener received. On a graceful shutdown, nuxt-task waits up to five seconds for pending hook calls.
+
+This plugin persists every run to a table:
+
+```ts
+// server/plugins/task-runs.ts
+export default defineNitroPlugin((nitroApp) => {
+  nitroApp.hooks.hook('task:run:start', async ({ run }) => {
+    await db.insert(taskRuns).values({
+      id: run.runId,
+      task: run.name,
+      trigger: run.trigger,
+      triggeredBy: run.triggeredBy,
+      scheduledFor: run.scheduledFor,
+      startedAt: run.startedAt,
+      status: 'running',
+    })
+  })
+
+  nitroApp.hooks.hook('task:run:finish', async ({ run, status, error, durationMs }) => {
+    await db.update(taskRuns)
+      .set({
+        status,
+        finishedAt: run.finishedAt,
+        durationMs,
+        attempts: run.attempt,
+        error: error ? String(error) : null,
+        traceId: run.meta.traceId as string | undefined,
+        logs: run.meta.logs as string[] | undefined,
+      })
+      .where(eq(taskRuns.id, run.runId))
+  })
+})
+```
+
+### Run context and logging
+
+`getCurrentTaskRun()` returns the open run to any code a handler calls, however deep, through `AsyncLocalStorage`. Outside a run, or on a runtime without `AsyncLocalStorage`, it returns `undefined`. The returned object is live and read-only, except for `meta`, which you can write to. Whatever `meta` holds when the run ends reaches `task:run:finish`.
+
+nuxt-task does not capture logs itself. To tie log lines to runs, have your logger check `getCurrentTaskRun()`:
+
+```ts
+// server/utils/logger.ts
+export function log(level: 'info' | 'warn' | 'error', message: string) {
+  console[level](message)
+
+  const run = getCurrentTaskRun()
+  if (run) {
+    const logs = (run.meta.logs as string[] | undefined) ?? []
+    logs.push(`${new Date().toISOString()} ${level} ${message}`)
+    run.meta.logs = logs
+  }
+}
+```
+
+```ts
+// in a task handler
+async handler() {
+  getCurrentTaskRun()!.meta.traceId = crypto.randomUUID()
+  log('info', 'sending reminders')
+  // ...
+}
+```
+
+Hook listeners run outside the run's context, so a logger called from a listener does not write into the run it is persisting.
+
+### Starting a task by hand
+
+```ts
+// server/api/tasks/[name]/run.post.ts
+export default defineEventHandler(async (event) => {
+  const name = getRouterParam(event, 'name')!
+  const user = await requireAdmin(event)
+
+  try {
+    return await triggerTask(name, {
+      payload: await readBody(event),
+      triggeredBy: `user:${user.id}`,
+      wait: false,
+    })
+  }
+  catch (error) {
+    if (error instanceof TaskAlreadyRunningError) {
+      throw createError({ statusCode: 409, message: `${name} is already running` })
+    }
+    throw error
+  }
+})
+```
+
+`triggerTask(name, options)` resolves `{ runId, joined, result? }`. Its options are:
+
+- `payload` and `context`: passed to the handler as with `runTask`.
+- `runId`: use your own id, for example a database row id.
+- `triggeredBy`: any string. It goes to hooks unchanged.
+- `ifRunning`: `'reject'` (the default) throws `TaskAlreadyRunningError` if the task already has an open run. `'join'` waits on the open run instead and ignores this call's payload. Nitro's own `runTask` always joins, silently.
+- `wait`: `true` (the default) resolves when the run finishes, with the handler's raw `result`, and rethrows its error. `false` resolves as soon as the run has started.
+
+An unknown name throws `TaskNotFoundError`. `triggerTask` works in both modes. In native mode it starts the run through Nitro's `runTask`.
+
+### Listing tasks and next runs
+
+`listTasks()` returns every registered task as `{ name, metaName, description, schedule, options, parked }`. The data is read from the task files at build time, so `options` contains only the values written as literals. `parked` is `true` for a schedule that can never fire, such as `0 0 30 2 *`.
+
+`nextRun(nameOrExpression, from?)` returns the next fire time after `from` (default: now) as a `Date`. It returns `null` for an on-demand task or a parked schedule. It follows the scheduler that actually fires the task:
+
+- **Native mode** uses croner in the server process's time zone, exactly as Nitro schedules. Set `TZ` to change that zone. `nuxtTask.timezone` and a task's `options.timezone` do **not** move native fire times; they only set `ctx.timezone` for the handler.
+- **Custom mode** uses the module's own scheduler, in the task's time zone under the strict and flexible rules in [Timezones](#timezones).
+
+`getRunningTasks()` returns snapshots of the open runs, and `isTaskRunning(name)` checks a single task.
+
+### One registry per process
+
+The run registry, the run context and the hooks are all held in memory, per process. If you run several server instances, each one tracks only its own runs, and `TaskAlreadyRunningError` only covers the current process. Use a database or a lock if a task must never run twice across instances.
 
 ## Cron expressions
 
@@ -268,6 +432,7 @@ All module options go under the `nuxtTask` key in `nuxt.config.ts`.
 | `clientTasks`         | `boolean`                     | `false`              | Enable client-side tasks. |
 | `tasksDir`            | `string`                      | (unused)             | Declared but not currently read. Task discovery always uses `server/tasks` under the Nuxt server directory. |
 | `experimental.tasks`  | `boolean`                     | `false`              | When `true`, use Nitro's native experimental task scheduler instead of the bundled custom scheduler. |
+| `autoImports`         | `boolean`                     | `true`               | Auto-import the run API (`triggerTask`, `listTasks`, `nextRun`, ...) in server code. Set to `false` if the names clash with your own, and import from `nuxt-task/runtime` instead. |
 | `storage.type`        | `StorageType`                 | `'memory'`           | Storage backend type. Only `memory` is implemented on the server today. |
 | `storage.config`      | `Record<string, any>`         | (none)               | Optional backend-specific storage configuration. |
 | `timezone.type`       | `string`                      | `'UTC'`              | Default IANA timezone used when a task does not set its own `options.timezone`. |
@@ -326,6 +491,8 @@ export default defineTaskHandler({
 ```
 
 When `strict` is `false` (the default), a task may set its own `options.timezone` and it overrides the module default for that task. When `strict` is `true`, per-task timezones are rejected and the module-level timezone applies to every task. Next-run times are kept in UTC internally and converted for evaluation.
+
+These rules govern the custom scheduler. In native mode Nitro fires schedules in the server process's time zone, so there both settings only set `ctx.timezone` for the handler. Set `TZ` on the server process to change when native tasks fire.
 
 ## Execution modes
 
