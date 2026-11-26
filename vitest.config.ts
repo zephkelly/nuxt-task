@@ -23,6 +23,8 @@ export default defineVitestConfig({
         alias: {
             '#tasks': fileURLToPath(new URL('./test/mocks/tasks.ts', import.meta.url)),
             '#nuxt-task/registry': fileURLToPath(new URL('./test/mocks/registry.ts', import.meta.url)),
+            // Only loads inside a Nitro build; the handler imports it.
+            'nitropack/dist/runtime/config': fileURLToPath(new URL('./test/mocks/nitro-config.ts', import.meta.url)),
         },
     },
 })

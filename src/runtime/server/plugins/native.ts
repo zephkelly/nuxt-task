@@ -36,12 +36,10 @@ export async function initializeNativeRuntime(
     const adapter: TriggerAdapter = (name, { payload, context }) =>
         nitroRunTask(name, { payload, context });
 
-    attachTaskRuntime({
-        nitroApp,
-        mode: "native",
-        adapter,
-        registry: await loadTaskRegistry(),
-    });
+    // Mode first and synchronously: defineTaskHandler reads it to pick the
+    // native branch, and nothing may load a task module ahead of it.
+    attachTaskRuntime({ nitroApp, mode: "native", adapter });
+    attachTaskRuntime({ registry: await loadTaskRegistry() });
 
     nitroApp.hooks.hook("close", async () => {
         await flushTaskRunHooks();

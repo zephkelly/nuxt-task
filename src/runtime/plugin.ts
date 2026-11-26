@@ -236,6 +236,10 @@ export async function initializePlugin(nitroApp: any): Promise<void> {
         return
     }
 
+    // Say which scheduler booted before task modules load, so that
+    // defineTaskHandler picks the custom branch without reading config.
+    attachTaskRuntime({ nitroApp, mode: 'custom' })
+
     // Load tasks, and connect the run API before anything can trigger one
     const named = await loadNamedTasks()
     const state = getRunState()

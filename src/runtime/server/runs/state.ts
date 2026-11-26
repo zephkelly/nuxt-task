@@ -68,6 +68,8 @@ export interface RunState {
     registry: TaskInfo[] | undefined;
     /** Custom mode: path name for each loaded definition object. */
     definitionNames: WeakMap<object, string>;
+    /** Keys of the warnings already printed, so each prints once. */
+    warned: Set<string>;
 }
 
 // Keyed on globalThis so that `#nuxt-task`, `nuxt-task/handler` and
@@ -96,6 +98,7 @@ function createState(): RunState {
         mode: undefined,
         registry: undefined,
         definitionNames: new WeakMap(),
+        warned: new Set(),
     };
 }
 
@@ -129,6 +132,19 @@ export function attachTaskRuntime(options: AttachTaskRuntimeOptions): void {
     if (options.mode) state.mode = options.mode;
     if (options.adapter) state.adapter = options.adapter;
     if (options.registry) state.registry = options.registry;
+}
+
+/**
+ * Prints a warning the first time `key` is seen in this process.
+ *
+ * @param {string} key - Identifies the warning
+ * @param {string} message - What to print
+ */
+export function warnOnce(key: string, message: string): void {
+    const state = getRunState();
+    if (state.warned.has(key)) return;
+    state.warned.add(key);
+    console.warn(message);
 }
 
 /** Drops all run state. For tests. */

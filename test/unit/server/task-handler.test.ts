@@ -4,9 +4,17 @@ import { moduleConfiguration } from '~/src/runtime/config'
 import type { ModuleOptions } from '~/src/runtime/scheduler'
 
 
-vi.mock('#imports', () => ({
-    useRuntimeConfig: vi.fn(),
-}))
+// The handler reads Nitro's runtime config through this import. By default
+// it reports the (spied) module singleton, as a real app's config would.
+const runtimeConfig = vi.hoisted(() => ({ override: undefined as any }))
+
+vi.mock('nitropack/dist/runtime/config', async () => {
+    const { moduleConfiguration } = await import('~/src/runtime/config')
+    return {
+        useRuntimeConfig: () =>
+            runtimeConfig.override ?? { nuxtTask: moduleConfiguration.getModuleOptions() },
+    }
+})
 
 describe('defineTaskHandler', () => {
     const mockModuleOptions: ModuleOptions = {
@@ -36,6 +44,7 @@ describe('defineTaskHandler', () => {
     })
 
     afterEach(() => {
+        runtimeConfig.override = undefined
         // Restore all spies after each test
         vi.restoreAllMocks()
     })
@@ -232,9 +241,10 @@ describe('defineTaskHandler', () => {
     })
 
     describe('config resolution', () => {
-        it('should use useRuntimeConfig when available', async () => {
-            const { useRuntimeConfig } = await import('#imports')
-            vi.mocked(useRuntimeConfig).mockReturnValue({
+        it('should prefer Nitro\'s runtime config over the build-time singleton', async () => {
+            // A built app: the singleton holds defaults (custom), the runtime
+            // config holds what the app configured (native).
+            runtimeConfig.override = {
                 nuxtTask: {
                     ...mockModuleOptions,
                     timezone: {
@@ -242,43 +252,33 @@ describe('defineTaskHandler', () => {
                         validate: true,
                         strict: false,
                     },
-                    experimental: { tasks: false },
+                    experimental: { tasks: true },
                 },
-            } as any)
-
-            const taskDef: NuxtCronTaskDefinition = {
-                meta: { name: 'test-task' },
-                schedule: '0 0 * * *',
-                handler: async (ctx) => ctx,
             }
 
-            const handler = defineTaskHandler(taskDef)
-            const result = await handler.run({ test: 'data' })
+            const mockHandler = vi.fn().mockResolvedValue({})
+            const handler = defineTaskHandler({
+                meta: { name: 'test-task' },
+                schedule: '0 0 * * *',
+                handler: mockHandler,
+            })
+            await handler.run({ name: 'dir:test-task', payload: {}, context: {} })
 
-            expect(result).toHaveProperty('test', 'data')
+            expect(handler).not.toHaveProperty('_custom')
+            expect(mockHandler).toHaveBeenCalledWith({ name: 'dir:test-task', timezone: 'America/New_York' })
         })
     })
 
     describe('experimental (native) mode', () => {
-        // The native branch is selected by config.experimental.tasks. Config is
-        // resolved from a bare global useRuntimeConfig() first and only falls
-        // back to the singleton, and which of those wins differs between the
-        // node and nuxt vitest projects. Point both at the same native options
-        // so the branch is native in either project.
+        // With no plugin attached, the branch follows the runtime config's
+        // experimental.tasks, which the mock above reads from the singleton.
         const nativeOptions: ModuleOptions = {
             ...mockModuleOptions,
             experimental: { tasks: true },
         }
 
-        beforeEach(async () => {
-            const { useRuntimeConfig } = await import('#imports')
-            vi.mocked(useRuntimeConfig).mockReturnValue({ nuxtTask: nativeOptions } as any)
-            vi.stubGlobal('useRuntimeConfig', () => ({ nuxtTask: nativeOptions }))
+        beforeEach(() => {
             getModuleOptionsSpy.mockReturnValue(nativeOptions)
-        })
-
-        afterEach(() => {
-            vi.unstubAllGlobals()
         })
 
         it('should select the native branch (no _custom marker)', () => {

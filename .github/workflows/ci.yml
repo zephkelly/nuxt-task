@@ -21,3 +21,9 @@ jobs:
         run: npx nypm@latest i
       - name: Playground prepare
         run: npm run dev:prepare
+      # Packs the module, installs it into test/fixtures/built-app's
+      # node_modules, runs `nuxi build` and boots .output/server/index.mjs.
+      # Catches what unit tests cannot: 1.3.0 named every run by meta.name in
+      # built apps because Nitro does not auto-import into a dependency.
+      - name: Built app test
+        run: npm run test:build
