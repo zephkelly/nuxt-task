@@ -1,6 +1,24 @@
 # Changelog
 
 
+## v1.3.1
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.3.0...v1.3.1)
+
+### 🩹 Fixes
+
+- Frozen lockfile ([ba33d8d](https://github.com/zephkelly/nuxt-task/commit/ba33d8d))
+- Package json errors ([d25bcce](https://github.com/zephkelly/nuxt-task/commit/d25bcce))
+- Runs, hooks, getRunningTasks and triggerTask used meta.name instead of the task path in built apps ([e519877](https://github.com/zephkelly/nuxt-task/commit/e519877))
+
+### 📖 Documentation
+
+- Add run tracking section to docs ([6f38bf8](https://github.com/zephkelly/nuxt-task/commit/6f38bf8))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.3.0
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.8...v1.3.0)
