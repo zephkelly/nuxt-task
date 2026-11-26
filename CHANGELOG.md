@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.3.0
+
+[compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.8...v1.3.0)
+
+### 🚀 Enhancements
+
+- Run tracking for tasks ([a5532b3](https://github.com/zephkelly/nuxt-task/commit/a5532b3))
+
+### ❤️ Contributors
+
+- Zephkelly <masterevank@gmail.com>
+
 ## v1.2.8
 
 [compare changes](https://github.com/zephkelly/nuxt-task/compare/v1.2.7...v1.2.8)
