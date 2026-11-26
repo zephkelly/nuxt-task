@@ -9,10 +9,17 @@ export default defineConfig({
                 // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
+      { text: 'Run tracking', link: '/guide/run-tracking' },
       { text: 'Examples', link: '/markdown-examples' },
                 ],
 
     sidebar: [
+      {
+        text: 'Guide',
+        items: [
+          { text: 'Run tracking', link: '/guide/run-tracking' },
+        ]
+      },
       {
         text: 'Examples',
         items: [
